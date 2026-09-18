@@ -1,5 +1,5 @@
-import type { AddLayerObject, GeoJSONSource } from "maplibre-gl";
-import { useEffect } from "react";
+import type { AddLayerObject } from "maplibre-gl";
+import { useGeoJsonMapLayer } from "../../components/map/useGeoJsonMapLayer.js";
 import { useMap } from "../../components/map/MapContext.js";
 import { Stamp } from "../../components/ui/Stamp.js";
 import { formatDateStamp } from "../../lib/dateFormat.js";
@@ -24,15 +24,12 @@ export const PROBABILITY_LAYER_ID = "probability-cells";
  * range 0.016–0.97 with a clear nearshore-high/offshore-low structure —
  * exactly what NOAA's own map shows and what a `heatmap` layer erased).
  * The blue→red ramp mirrors NOAA's own color scale for the same reason:
- * comparability, not just style. Typed as the full `AddLayerObject` (not
- * just its `paint` field) because the expression arrays' element types
- * only widen correctly to MapLibre's style-spec types when checked
- * against the whole layer object.
+ * comparability, not just style.
  */
-const probabilityCellsLayer = (source: string): AddLayerObject => ({
+const probabilityCellsLayer: AddLayerObject = {
   id: PROBABILITY_LAYER_ID,
   type: "circle",
-  source,
+  source: PROBABILITY_SOURCE_ID,
   paint: {
     "circle-color": [
       "interpolate",
@@ -59,49 +56,23 @@ const probabilityCellsLayer = (source: string): AddLayerObject => ({
     "circle-blur": 0.6,
     "circle-opacity": 0.8,
   },
-});
+};
 
 /**
  * Renders WhaleWatch 2.0's blue-whale probability grid as colored map
- * cells, plus a small stamp naming the model's own date (not today's
- * date — see ADR 0002 on why that distinction matters). Waits
- * for the map's `load` event before touching sources/layers, since
- * `addSource`/`addLayer` on a not-yet-loaded style either throws or is
- * silently dropped depending on MapLibre version — the mock in
- * `test/maplibre-mock.ts` makes this ordering explicit rather than
- * letting a test pass either way.
+ * cells (via `useGeoJsonMapLayer` — see its doc comment for the
+ * load-gating/lifecycle details this no longer hand-rolls), plus a small
+ * stamp naming the model's own date (not today's date — see ADR 0002 on
+ * why that distinction matters).
  */
 export function ProbabilityLayer() {
   const map = useMap();
   const result = useProbabilityGrid();
 
-  useEffect(() => {
-    if (!map || result.state !== "ok") return;
-
-    const geojson = gridToGeoJson(result.data);
-
-    const applyToMap = () => {
-      const existingSource = map.getSource(PROBABILITY_SOURCE_ID) as GeoJSONSource | undefined;
-      if (existingSource) {
-        existingSource.setData(geojson);
-        return;
-      }
-      map.addSource(PROBABILITY_SOURCE_ID, { type: "geojson", data: geojson });
-      map.addLayer(probabilityCellsLayer(PROBABILITY_SOURCE_ID));
-    };
-
-    if (map.loaded()) {
-      applyToMap();
-    } else {
-      map.once("load", applyToMap);
-    }
-
-    return () => {
-      map.off("load", applyToMap);
-      if (map.getLayer(PROBABILITY_LAYER_ID)) map.removeLayer(PROBABILITY_LAYER_ID);
-      if (map.getSource(PROBABILITY_SOURCE_ID)) map.removeSource(PROBABILITY_SOURCE_ID);
-    };
-  }, [map, result]);
+  useGeoJsonMapLayer(map, result, gridToGeoJson, {
+    sourceId: PROBABILITY_SOURCE_ID,
+    layers: [probabilityCellsLayer],
+  });
 
   if (result.state !== "ok") return null;
 

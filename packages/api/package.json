@@ -14,7 +14,7 @@
   "dependencies": {
     "@hono/node-server": "^1.13.7",
     "@spout/contracts": "*",
-    "better-sqlite3": "^11.5.0",
+    "better-sqlite3": "^13.0.3",
     "hono": "^4.6.9",
     "zod": "^3.23.8"
   },

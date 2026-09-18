@@ -1,5 +1,14 @@
-import { HealthStatusSchema, ProbabilityGridSchema, type HealthStatus, type ProbabilityGrid } from "@spout/contracts";
-import type { ZodType } from "zod";
+import {
+  HealthStatusSchema,
+  ProbabilityGridSchema,
+  SightingSchema,
+  encodeSightingsQuery,
+  type HealthStatus,
+  type ProbabilityGrid,
+  type Sighting,
+  type SightingsQuery,
+} from "@spout/contracts";
+import { z, type ZodType } from "zod";
 
 /**
  * Overridable via `VITE_API_URL` for non-local environments; defaults to
@@ -33,4 +42,13 @@ export function fetchHealth(baseUrl: string = API_BASE_URL): Promise<HealthStatu
 /** Fetches the current WhaleWatch 2.0 probability grid (see ADR 0002, R1). */
 export function fetchProbabilityGrid(baseUrl: string = API_BASE_URL): Promise<ProbabilityGrid> {
   return fetchAndValidate("/api/probability", ProbabilityGridSchema, baseUrl);
+}
+
+/** Fetches GBIF-sourced sightings (research/citizen/acoustic tiers), filtered by `params` (see ADR 0002, R2). */
+export function fetchSightings(
+  params: Partial<SightingsQuery> = {},
+  baseUrl: string = API_BASE_URL,
+): Promise<Sighting[]> {
+  const path = `/api/sightings${encodeSightingsQuery(params)}`;
+  return fetchAndValidate(path, z.array(SightingSchema), baseUrl);
 }

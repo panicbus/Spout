@@ -5,3 +5,4 @@ export * from "./source.js";
 export * from "./sighting.js";
 export * from "./probability.js";
 export * from "./filters.js";
+export * from "./sightingsQueryCodec.js";

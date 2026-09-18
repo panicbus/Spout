@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProbabilityGridSchema } from "@spout/contracts";
-import { buildProbabilityGrid } from "@spout/contracts/fixtures.js";
-import { API_BASE_URL, fetchHealth, fetchProbabilityGrid } from "./apiClient.js";
+import { buildProbabilityGrid, buildSighting } from "@spout/contracts/fixtures.js";
+import { API_BASE_URL, fetchHealth, fetchProbabilityGrid, fetchSightings } from "./apiClient.js";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -68,5 +68,37 @@ describe("fetchProbabilityGrid", () => {
       vi.fn().mockResolvedValue(jsonResponse({ error: "unavailable" }, 503)),
     );
     await expect(fetchProbabilityGrid("http://localhost:8787")).rejects.toThrow();
+  });
+});
+
+describe("fetchSightings", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("fetches /api/sightings with no query string when no params are given", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(jsonResponse([buildSighting()]));
+    vi.stubGlobal("fetch", mockFetch);
+
+    const sightings = await fetchSightings({}, "http://localhost:8787");
+
+    expect(mockFetch).toHaveBeenCalledWith("http://localhost:8787/api/sightings");
+    expect(sightings).toHaveLength(1);
+  });
+
+  it("includes params in the query string", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(jsonResponse([]));
+    vi.stubGlobal("fetch", mockFetch);
+
+    await fetchSightings({ species: ["orca"], window: "12m" }, "http://localhost:8787");
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://localhost:8787/api/sightings?species=orca&window=12m",
+    );
+  });
+
+  it("rejects when a returned record fails schema validation", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse([{ id: "broken" }])));
+    await expect(fetchSightings({}, "http://localhost:8787")).rejects.toThrow();
   });
 });

@@ -5,11 +5,12 @@ import { App } from "./App.js";
 
 vi.mock("./lib/apiClient.js", async () => {
   const actual = await vi.importActual<typeof apiClient>("./lib/apiClient.js");
-  // Never let a unit test hit a real network socket for /health or /api/probability.
+  // Never let a unit test hit a real network socket for /health, /api/probability, or /api/sightings.
   return {
     ...actual,
     fetchHealth: vi.fn().mockReturnValue(new Promise(() => {})),
     fetchProbabilityGrid: vi.fn().mockReturnValue(new Promise(() => {})),
+    fetchSightings: vi.fn().mockReturnValue(new Promise(() => {})),
   };
 });
 

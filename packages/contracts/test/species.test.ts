@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { SPECIES, SPECIES_LABELS, SpeciesSchema } from "../src/species.js";
+import {
+  SPECIES,
+  SPECIES_LABELS,
+  SPECIES_SCIENTIFIC_NAMES,
+  SpeciesSchema,
+  speciesFromScientificName,
+} from "../src/species.js";
 
 describe("SpeciesSchema", () => {
   it("accepts each of the four v1 target species", () => {
@@ -16,5 +22,27 @@ describe("SpeciesSchema", () => {
     for (const species of SPECIES) {
       expect(SPECIES_LABELS[species]).toBeTruthy();
     }
+  });
+
+  it("has a scientific name for every species — shared by both GBIF and iNaturalist source modules", () => {
+    for (const species of SPECIES) {
+      expect(SPECIES_SCIENTIFIC_NAMES[species]).toBeTruthy();
+    }
+  });
+});
+
+describe("speciesFromScientificName", () => {
+  it("matches GBIF's authored form, e.g. 'Megaptera novaeangliae (Borowski, 1781)'", () => {
+    expect(speciesFromScientificName("Megaptera novaeangliae (Borowski, 1781)")).toBe(
+      "humpback-whale",
+    );
+  });
+
+  it("matches a bare scientific name with no author suffix", () => {
+    expect(speciesFromScientificName("Balaenoptera musculus")).toBe("blue-whale");
+  });
+
+  it("returns undefined for a species this app doesn't track", () => {
+    expect(speciesFromScientificName("Balaenoptera physalus")).toBeUndefined();
   });
 });

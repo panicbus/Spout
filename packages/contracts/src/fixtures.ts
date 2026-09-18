@@ -1,5 +1,6 @@
 import type { Attribution } from "./source.js";
 import type { ProbabilityGrid } from "./probability.js";
+import type { Sighting } from "./sighting.js";
 
 /**
  * Test-only builders for the schemas in this package. Deliberately its
@@ -39,6 +40,26 @@ export function buildProbabilityGrid(overrides: Partial<ProbabilityGrid> = {}): 
       datasetId: "whalewatch2-blue-whale-ensemble",
       publisherName: "NOAA WhaleWatch 2.0",
       publisherId: "noaa-whalewatch2",
+    }),
+    ...overrides,
+  };
+}
+
+export function buildSighting(overrides: Partial<Sighting> = {}): Sighting {
+  return {
+    id: "gbif:1",
+    species: "orca",
+    lat: 36.5,
+    lon: -122.1,
+    observedAt: "2026-09-01T00:00:00.000Z",
+    tier: "research",
+    sourceApi: "gbif",
+    verification: "verified",
+    coordinatesObscured: false,
+    attribution: buildAttribution({
+      publisherName: "OBIS-SEAMAP",
+      publisherId: "67b2263f-6990-4d9d-b32b-20aa72ef4fbc",
+      license: { id: "CC0_1_0", commercialUse: true },
     }),
     ...overrides,
   };
