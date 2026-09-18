@@ -1,0 +1,30 @@
+[
+  {
+    "dirname": "flyers",
+    "dir": "output/flyers",
+    "desc": "Flyers",
+    "items": ["blwh_flyer_2026-09-13.png", "blwh_flyer_2026-09-14.png", "blwh_flyer_2026-09-15.png"]
+  },
+  {
+    "dirname": "rasters",
+    "dir": "output/rasters",
+    "desc": "Rasters",
+    "items": [
+      "blwh_ensemble_2026-09-13.grd",
+      "blwh_ensemble_2026-09-13.gri",
+      "blwh_ensemble_2026-09-13.tif",
+      "blwh_ensemble_2026-09-14.grd",
+      "blwh_ensemble_2026-09-14.gri",
+      "blwh_ensemble_2026-09-14.tif",
+      "blwh_ensemble_2026-09-15.grd",
+      "blwh_ensemble_2026-09-15.gri",
+      "blwh_ensemble_2026-09-15.tif"
+    ]
+  },
+  {
+    "dirname": "maps",
+    "dir": "output/maps",
+    "desc": "Maps",
+    "items": ["blwh_ensemble_2026-09-13.png", "blwh_ensemble_2026-09-14.png", "blwh_ensemble_2026-09-15.png"]
+  }
+]

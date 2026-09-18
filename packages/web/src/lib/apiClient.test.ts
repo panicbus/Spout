@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { API_BASE_URL, fetchHealth } from "./apiClient.js";
+import { ProbabilityGridSchema } from "@spout/contracts";
+import { buildProbabilityGrid } from "@spout/contracts/fixtures.js";
+import { API_BASE_URL, fetchHealth, fetchProbabilityGrid } from "./apiClient.js";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -42,5 +44,29 @@ describe("fetchHealth", () => {
   it("rejects when the HTTP response is not ok", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({}, 500)));
     await expect(fetchHealth("http://localhost:8787")).rejects.toThrow();
+  });
+});
+
+describe("fetchProbabilityGrid", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("fetches /api/probability and returns a schema-valid grid", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(jsonResponse(buildProbabilityGrid()));
+    vi.stubGlobal("fetch", mockFetch);
+
+    const grid = await fetchProbabilityGrid("http://localhost:8787");
+
+    expect(mockFetch).toHaveBeenCalledWith("http://localhost:8787/api/probability");
+    expect(ProbabilityGridSchema.parse(grid).modelDate).toBe("2026-09-15");
+  });
+
+  it("rejects when the API returns 503 (no data fetched yet upstream)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse({ error: "unavailable" }, 503)),
+    );
+    await expect(fetchProbabilityGrid("http://localhost:8787")).rejects.toThrow();
   });
 });

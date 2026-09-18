@@ -16,8 +16,16 @@ const ProbabilityCellSchema = z.object({
 export const ProbabilityGridSchema = z
   .object({
     species: z.literal("blue-whale"),
-    /** The date of the source raster this grid was decoded from (the model's own date, not today). */
-    modelDate: z.string().min(1),
+    /**
+     * The date of the source raster this grid was decoded from (the
+     * model's own date, not today) — strictly `YYYY-MM-DD`. Every
+     * renderer of this value (`formatDateStamp` in `packages/web`)
+     * assumes exactly this shape and forces UTC parsing to avoid a
+     * timezone-dependent off-by-one day; enforcing the format here means
+     * a malformed value fails at the API boundary, not as an uncaught
+     * exception in a component render.
+     */
+    modelDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "modelDate must be YYYY-MM-DD"),
     /** When Spout fetched and decoded this grid. */
     generatedAt: z.string().min(1),
     bbox: BboxSchema,

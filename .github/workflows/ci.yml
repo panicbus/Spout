@@ -31,6 +31,6 @@ jobs:
       - name: Web build
         run: npm run build -w @spout/web
 
-      - name: Playwright e2e
-        run: npm run test:e2e
+      - name: Playwright e2e (excludes @network — see nightly.yml)
+        run: npx playwright test --grep-invert "@network"
         working-directory: packages/web

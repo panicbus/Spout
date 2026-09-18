@@ -1,0 +1,36 @@
+name: Nightly (real upstream checks)
+
+# Runs the tests tagged @network — real, unmocked calls to live upstream
+# APIs (currently just NOAA WhaleWatch2, via packages/web/e2e/probability-
+# layer.spec.ts). These prove the actual pipeline still works end to end,
+# which is worth knowing, but they depend on a single small government
+# research host's uptime and aren't a fair reason to block every push/PR
+# (see ci.yml's --grep-invert and ADR 0002). A failure here means either
+# NOAA is down/blocking CI's IP range, or NOAA changed something this app
+# needs to know about — check which before assuming it's the latter.
+
+on:
+  schedule:
+    - cron: "17 13 * * *" # once daily; an arbitrary off-the-hour time, not synchronized to NOAA's own refresh
+  workflow_dispatch: {}
+
+jobs:
+  network-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: packages/web
+
+      - name: Playwright e2e (@network only)
+        run: npx playwright test --grep "@network"
+        working-directory: packages/web

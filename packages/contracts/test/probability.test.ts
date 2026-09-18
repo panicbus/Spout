@@ -44,6 +44,11 @@ describe("ProbabilityGridSchema", () => {
     expect(() => ProbabilityGridSchema.parse(validGrid({ bbox: [-134, 30, -115.5] }))).toThrow();
   });
 
+  it("rejects a modelDate that isn't YYYY-MM-DD — every renderer (formatDateStamp) assumes this exact shape", () => {
+    expect(() => ProbabilityGridSchema.parse(validGrid({ modelDate: "Sept 15 2026" }))).toThrow();
+    expect(() => ProbabilityGridSchema.parse(validGrid({ modelDate: "2026-09-15T00:00:00Z" }))).toThrow();
+  });
+
   it("rejects more cells than rows*cols allows — the signature of a corrupted raster decode", () => {
     const tooManyCells = Array.from({ length: 181 * 185 }, () => ({
       lat: 0,

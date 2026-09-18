@@ -98,9 +98,20 @@ citizen" split does not hold across GBIF vs. OBIS
 
 ## Decision
 
-- **Layer 1 (probability):** poll the real WhaleWatch 2.0 raster manifest
-  daily, proxy and decode `.grd`/`.gri` server-side, serve as GeoJSON,
-  stamped with the model's own date. Blue whale only.
+- **Layer 1 (probability):** check the real WhaleWatch 2.0 raster manifest
+  for a new date, proxy and decode `.grd`/`.gri` server-side, serve as
+  GeoJSON, stamped with the model's own date. Blue whale only.
+  **Implementation note (added R1):** this is a lazy, request-triggered
+  refresh (`packages/api/src/store/ttlCache.ts`, 6h TTL) — the first
+  request after the TTL expires pays for the refresh, there is no
+  standalone background poller. For a model that itself refreshes at most
+  daily and a low-traffic app, this is simpler than a scheduler with an
+  identical practical refresh cadence (worst case, one request is served
+  the same grid a scheduler would have refreshed moments earlier). The
+  original "poll... daily" wording above described an active job that was
+  never built; revisit toward one only if traffic patterns ever make the
+  request-triggered refresh's latency (one slow request pays for the
+  NOAA fetch) an actual user-facing problem.
 - **Layer 2 (research-grade sightings):** GBIF only. Tier by
   `publishingOrgKey`, not by which API answered and not by `basisOfRecord`
   (SanctSound is machine-observed but authoritative; Cascadia/OBIS-SEAMAP
