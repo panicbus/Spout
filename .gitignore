@@ -1,0 +1,16 @@
+node_modules/
+dist/
+dist-electron/
+build/
+.env
+.env.local
+*.db
+*.db-journal
+*.db-wal
+coverage/
+playwright-report/
+test-results/
+.DS_Store
+*.log
+.vite/
+*.tsbuildinfo
