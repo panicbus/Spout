@@ -42,12 +42,13 @@ describe("ProbabilityLayer", () => {
     expect(map.addSource).toHaveBeenCalledWith(
       PROBABILITY_SOURCE_ID,
       expect.objectContaining({
-        type: "geojson",
-        data: expect.objectContaining({ type: "FeatureCollection" }),
+        type: "image",
+        url: expect.stringMatching(/^data:image\/png;base64,/) as unknown as string,
+        coordinates: expect.any(Array) as unknown as unknown[],
       }),
     );
     expect(map.addLayer).toHaveBeenCalledWith(
-      expect.objectContaining({ id: PROBABILITY_LAYER_ID, type: "circle" }),
+      expect.objectContaining({ id: PROBABILITY_LAYER_ID, type: "raster" }),
     );
   });
 
@@ -64,9 +65,9 @@ describe("ProbabilityLayer", () => {
     await waitFor(() => expect(mapInstances[0]!.addSource).toHaveBeenCalled());
   });
 
-  it("updates the existing source's data instead of re-adding it if the layer is already on the map", async () => {
+  it("updates the existing source's image instead of re-adding it if the layer is already on the map", async () => {
     vi.mocked(apiClient.fetchProbabilityGrid).mockResolvedValue(fakeGrid("2026-09-15"));
-    const setData = vi.fn();
+    const updateImage = vi.fn();
 
     render(
       <MapCanvas>
@@ -75,11 +76,13 @@ describe("ProbabilityLayer", () => {
     );
     const map = mapInstances[0]!;
     await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
-    map.getSource.mockReturnValue({ setData });
+    map.getSource.mockReturnValue({ updateImage });
     map.trigger("load");
 
     expect(map.addSource).not.toHaveBeenCalled();
-    expect(setData).toHaveBeenCalledWith(expect.objectContaining({ type: "FeatureCollection" }));
+    expect(updateImage).toHaveBeenCalledWith(
+      expect.objectContaining({ url: expect.stringMatching(/^data:image\/png;base64,/) as unknown as string }),
+    );
   });
 
   it("removes the layer and source on unmount", async () => {
@@ -93,7 +96,7 @@ describe("ProbabilityLayer", () => {
     const map = mapInstances[0]!;
     await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
     map.getLayer.mockReturnValue({ id: PROBABILITY_LAYER_ID });
-    map.getSource.mockReturnValue({ setData: vi.fn() });
+    map.getSource.mockReturnValue({ updateImage: vi.fn() });
     map.trigger("load");
 
     unmount();

@@ -1,4 +1,4 @@
-import type { TimeWindow } from "@spout/contracts";
+import { TIME_WINDOW_DAYS, type TimeWindow } from "@spout/contracts";
 
 /** Returns a YYYY-MM-DD date `days` before `now` — the one place this Date arithmetic lives (previously duplicated across this file, `sightingsRefresh.ts`, and `sources/gbif.ts`'s `untilDate` default). */
 export function dateDaysAgo(days: number, now: Date = new Date()): string {
@@ -6,23 +6,7 @@ export function dateDaysAgo(days: number, now: Date = new Date()): string {
   return target.toISOString().slice(0, 10);
 }
 
-/**
- * `"latest"` maps to a short 7-day window because GBIF itself has no
- * data fresher than that most days (verified during initial data-source
- * validation — see ADR 0002/0003). This endpoint's `/api/sightings`
- * currently serves GBIF only (R2); once R3 adds iNaturalist's direct
- * API into the same store, `"latest"` starts returning real recent
- * records instead of usually-empty ones — the window itself doesn't
- * need to change, only what's been ingested into it.
- */
-const WINDOW_DAYS: Record<TimeWindow, number> = {
-  latest: 7,
-  "30d": 30,
-  "90d": 90,
-  "12m": 365,
-};
-
-/** Returns a YYYY-MM-DD cutoff date for `window`, relative to `now`. */
+/** Returns a YYYY-MM-DD cutoff date for `window`, relative to `now`. See `TIME_WINDOW_DAYS` (`@spout/contracts`) for the day-count mapping — `"latest"`'s 7 days exists because GBIF itself has no data fresher than that most days (verified during initial data-source validation — see ADR 0002/0003); R3's iNaturalist-direct API is what actually populates it with real recent records. */
 export function sinceDateForWindow(window: TimeWindow, now: Date = new Date()): string {
-  return dateDaysAgo(WINDOW_DAYS[window], now);
+  return dateDaysAgo(TIME_WINDOW_DAYS[window], now);
 }

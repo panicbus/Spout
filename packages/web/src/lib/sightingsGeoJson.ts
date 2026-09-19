@@ -1,5 +1,6 @@
 import type { Sighting, SourceTier, Species, VerificationStatus } from "@spout/contracts";
 import type { FeatureCollection, Point } from "geojson";
+import { ageBucket, type AgeBucket } from "./ageBucket.js";
 
 export interface SightingProperties {
   id: string;
@@ -7,6 +8,7 @@ export interface SightingProperties {
   tier: SourceTier;
   verification: VerificationStatus;
   coordinatesObscured: boolean;
+  ageBucket: AgeBucket;
 }
 
 /**
@@ -27,8 +29,16 @@ export interface SightingProperties {
  * future use rather than as a load-bearing clustering requirement; paint
  * expressions can't read the Feature-level id at all, hence the
  * property-level copy, which IS load-bearing (tier-based coloring).
+ *
+ * `now` defaults to the real current time but is overridable so callers
+ * (tests, and anything needing a stable render across a long-lived
+ * component tree) can compute `ageBucket` deterministically rather than
+ * having it silently shift mid-session.
  */
-export function sightingsToGeoJson(sightings: Sighting[]): FeatureCollection<Point, SightingProperties> {
+export function sightingsToGeoJson(
+  sightings: Sighting[],
+  now: Date = new Date(),
+): FeatureCollection<Point, SightingProperties> {
   return {
     type: "FeatureCollection",
     features: sightings.map((sighting) => ({
@@ -41,6 +51,7 @@ export function sightingsToGeoJson(sightings: Sighting[]): FeatureCollection<Poi
         tier: sighting.tier,
         verification: sighting.verification,
         coordinatesObscured: sighting.coordinatesObscured,
+        ageBucket: ageBucket(sighting.observedAt, now),
       },
     })),
   };

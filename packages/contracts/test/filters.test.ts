@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SightingsQuerySchema, TIME_WINDOWS, TimeWindowSchema } from "../src/filters.js";
+import { SightingsQuerySchema, TIME_WINDOWS, TIME_WINDOW_DAYS, TimeWindowSchema } from "../src/filters.js";
 
 describe("TimeWindowSchema", () => {
   it("accepts every window including 'latest', the iNaturalist-driven recency view (ADR 0003)", () => {
@@ -11,6 +11,20 @@ describe("TimeWindowSchema", () => {
   it("rejects 'today' and 'this-week' — replaced by 'latest' because GBIF has zero records that fresh", () => {
     expect(() => TimeWindowSchema.parse("today")).toThrow();
     expect(() => TimeWindowSchema.parse("this-week")).toThrow();
+  });
+});
+
+describe("TIME_WINDOW_DAYS", () => {
+  it("has exactly one entry per TIME_WINDOWS value, the single source of truth for both the API's sinceDate cutoff and the web package's ageBucket visual boundaries", () => {
+    for (const window of TIME_WINDOWS) {
+      expect(TIME_WINDOW_DAYS[window]).toBeGreaterThan(0);
+    }
+    expect(Object.keys(TIME_WINDOW_DAYS)).toHaveLength(TIME_WINDOWS.length);
+  });
+
+  it("maps 'latest' to 7 days and '30d' to 30 days, per ADR 0003", () => {
+    expect(TIME_WINDOW_DAYS.latest).toBe(7);
+    expect(TIME_WINDOW_DAYS["30d"]).toBe(30);
   });
 });
 

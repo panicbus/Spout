@@ -1,8 +1,10 @@
 import type { AddLayerObject } from "maplibre-gl";
+import type { TimeWindow } from "@spout/contracts";
 import { useMap } from "../../components/map/MapContext.js";
 import { useGeoJsonMapLayer } from "../../components/map/useGeoJsonMapLayer.js";
 import { sightingsToGeoJson } from "../../lib/sightingsGeoJson.js";
 import { useSightings } from "../../lib/useSightings.js";
+import { AGE_OPACITY, UNVERIFIED_OPACITY, VERIFIED_MIN_OPACITY, VERIFIED_OPACITY } from "./pinOpacity.js";
 
 export const SIGHTINGS_SOURCE_ID = "sightings";
 export const SIGHTINGS_CLUSTERS_LAYER_ID = "sightings-clusters";
@@ -78,8 +80,53 @@ const pointsLayer: AddLayerObject = {
     // a precise pin.
     "circle-radius": ["case", ["get", "coordinatesObscured"], 11, 6],
     // Unverified citizen reports (iNaturalist "needs_id") render faded,
-    // distinct from confirmed research-grade/verified data.
-    "circle-opacity": ["case", ["==", ["get", "verification"], "unverified"], 0.4, 0.85],
+    // distinct from confirmed research-grade/verified data, further faded
+    // by age (the "match" on ageBucket below, from AGE_OPACITY — the one
+    // definition, repeated here per branch only because MapLibre's
+    // expression types don't structurally accept a shared literal
+    // extracted into its own named constant) so recency also reads on the
+    // map itself, not just in a tapped detail card. Verified opacity is
+    // floored at VERIFIED_MIN_OPACITY regardless of age — see that
+    // constant's doc comment for why age fade must NOT be allowed to push
+    // a verified pin down near/below an unverified pin's ceiling.
+    "circle-opacity": [
+      "case",
+      ["==", ["get", "verification"], "unverified"],
+      [
+        "*",
+        UNVERIFIED_OPACITY,
+        [
+          "match",
+          ["get", "ageBucket"],
+          "today",
+          AGE_OPACITY.today,
+          "this-week",
+          AGE_OPACITY["this-week"],
+          "this-month",
+          AGE_OPACITY["this-month"],
+          AGE_OPACITY.older,
+        ],
+      ],
+      [
+        "max",
+        VERIFIED_MIN_OPACITY,
+        [
+          "*",
+          VERIFIED_OPACITY,
+          [
+            "match",
+            ["get", "ageBucket"],
+            "today",
+            AGE_OPACITY.today,
+            "this-week",
+            AGE_OPACITY["this-week"],
+            "this-month",
+            AGE_OPACITY["this-month"],
+            AGE_OPACITY.older,
+          ],
+        ],
+      ],
+    ],
     "circle-stroke-width": ["case", ["get", "coordinatesObscured"], 2, 1],
     "circle-stroke-color": "#ffffff",
     "circle-stroke-opacity": ["case", ["get", "coordinatesObscured"], 0.5, 1],
@@ -100,9 +147,13 @@ const pointsLayer: AddLayerObject = {
  * is the whole dataset for v1's geographic scope. Tap-to-detail is R4
  * scope (`PinDetailCard`), not built here.
  */
-export function SightingsLayer() {
+export interface SightingsLayerProps {
+  timeWindow: TimeWindow;
+}
+
+export function SightingsLayer({ timeWindow }: SightingsLayerProps) {
   const map = useMap();
-  const result = useSightings({});
+  const result = useSightings({ window: timeWindow });
 
   useGeoJsonMapLayer(map, result, sightingsToGeoJson, {
     sourceId: SIGHTINGS_SOURCE_ID,

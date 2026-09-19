@@ -1,0 +1,16 @@
+.chip {
+  font: inherit;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  padding: 0.4em 0.9em;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(20, 20, 20, 0.5);
+  color: white;
+  cursor: pointer;
+}
+
+.chip[data-selected="true"] {
+  background: #2a6f97;
+  border-color: #2a6f97;
+}

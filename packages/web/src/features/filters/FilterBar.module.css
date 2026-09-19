@@ -1,0 +1,11 @@
+.bar {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  right: 4.5rem;
+  z-index: 1;
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.15rem;
+}
