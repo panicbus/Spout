@@ -46,7 +46,16 @@ const clusterCountLayer: AddLayerObject = {
   },
 };
 
-/** Unclustered individual sightings, colored by trust tier — this is the one place tier becomes visible on the map itself, ahead of R4's richer detail card. */
+/**
+ * Unclustered individual sightings, colored by trust tier — this is the
+ * one place tier becomes visible on the map itself, ahead of R4's richer
+ * detail card. Also the one place `verification`/`coordinatesObscured`
+ * become visible: spec.md ("clearly marked as unverified photo reports")
+ * and ADR 0002 ("obscured/geoprivacy coordinates are never rendered as
+ * precise pins") both require these to read as visually distinct, not
+ * just be present in the data — `sightingsGeoJson.ts` threads both
+ * properties through specifically so this layer can key off them here.
+ */
 const pointsLayer: AddLayerObject = {
   id: SIGHTINGS_POINTS_LAYER_ID,
   type: "circle",
@@ -64,9 +73,16 @@ const pointsLayer: AddLayerObject = {
       TIER_COLORS.acoustic,
       /* default */ "#999999",
     ],
-    "circle-radius": 6,
-    "circle-stroke-width": 1,
+    // Obscured coordinates are geoprivacy-randomized, not measured —
+    // rendered larger and softer so it reads as an approximate area, not
+    // a precise pin.
+    "circle-radius": ["case", ["get", "coordinatesObscured"], 11, 6],
+    // Unverified citizen reports (iNaturalist "needs_id") render faded,
+    // distinct from confirmed research-grade/verified data.
+    "circle-opacity": ["case", ["==", ["get", "verification"], "unverified"], 0.4, 0.85],
+    "circle-stroke-width": ["case", ["get", "coordinatesObscured"], 2, 1],
     "circle-stroke-color": "#ffffff",
+    "circle-stroke-opacity": ["case", ["get", "coordinatesObscured"], 0.5, 1],
   },
 };
 

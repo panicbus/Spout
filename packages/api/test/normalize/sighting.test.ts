@@ -70,6 +70,19 @@ describe("normalizeGbifRecord", () => {
     expect(sighting?.attribution.license.id).toBe("CC_BY_4_0");
   });
 
+  it.each([
+    ["https://creativecommons.org/licenses/by-sa/4.0/legalcode", "CC_BY_SA_4_0"],
+    ["https://creativecommons.org/licenses/by-nd/4.0/legalcode", "CC_BY_ND_4_0"],
+    ["https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode", "CC_BY_NC_SA_4_0"],
+    ["https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode", "CC_BY_NC_ND_4_0"],
+  ])(
+    "maps %s to %s — previously missing from this normalizer's own license map, unlike iNaturalist's (fixed via the shared ccLicenses.ts registry)",
+    (url, expectedId) => {
+      const sighting = normalizeGbifRecord(validRecord({ license: url }));
+      expect(sighting?.attribution.license.id).toBe(expectedId);
+    },
+  );
+
   it("drops a record with an unrecognized license rather than guessing commercial use", () => {
     expect(normalizeGbifRecord(validRecord({ license: "https://example.com/some-other-license" }))).toBeNull();
   });
@@ -143,5 +156,88 @@ describe("normalizeGbifRecord", () => {
       normalizeGbifRecord(validRecord({ coordinateUncertaintyInMeters: -5 })),
     ).not.toThrow();
     expect(normalizeGbifRecord(validRecord({ coordinateUncertaintyInMeters: -5 }))).toBeNull();
+  });
+
+  describe("iNaturalist-dataset de-dup convergence (R3)", () => {
+    // GBIF's "iNaturalist Research-grade Observations" dataset (verified
+    // live) — the only GBIF dataset whose occurrenceID reliably embeds
+    // the same numeric id iNaturalist's own direct API uses for the same
+    // observation.
+    const INATURALIST_DATASET_KEY = "50c9509d-22c7-4a22-a47d-8c48425ef4a7";
+
+    it("re-ids a record from GBIF's iNaturalist dataset to inaturalist:<id>, matching what R3's direct iNaturalist fetch would produce for the same observation, so the store's upsert-by-id naturally deduplicates them", () => {
+      const sighting = normalizeGbifRecord(
+        validRecord({
+          key: 5938027305,
+          datasetKey: INATURALIST_DATASET_KEY,
+          occurrenceID: "https://www.inaturalist.org/observations/333069440",
+        }),
+      );
+
+      expect(sighting?.id).toBe("inaturalist:333069440");
+      expect(sighting?.sourceApi).toBe("inaturalist");
+    });
+
+    it("falls back to gbif:<key> when the iNaturalist dataset's occurrenceID doesn't match the expected observation-URL shape", () => {
+      const sighting = normalizeGbifRecord(
+        validRecord({
+          key: 5938027305,
+          datasetKey: INATURALIST_DATASET_KEY,
+          occurrenceID: "not-a-url",
+        }),
+      );
+
+      expect(sighting?.id).toBe("gbif:5938027305");
+      expect(sighting?.sourceApi).toBe("gbif");
+    });
+
+    it("accepts http as well as https in the observation URL (occurrenceID scheme, like the license URL, is not reliably https-only)", () => {
+      const sighting = normalizeGbifRecord(
+        validRecord({
+          key: 5938027305,
+          datasetKey: INATURALIST_DATASET_KEY,
+          occurrenceID: "http://www.inaturalist.org/observations/333069440",
+        }),
+      );
+
+      expect(sighting?.id).toBe("inaturalist:333069440");
+    });
+
+    it.each([
+      ["a trailing slash", "https://www.inaturalist.org/observations/333069440/"],
+      ["no www subdomain", "https://inaturalist.org/observations/333069440"],
+      ["a trailing query string", "https://www.inaturalist.org/observations/333069440?utm_source=test"],
+    ])(
+      "falls back to gbif:<key> for a near-miss occurrenceID shape (%s) — verified live against 350+ real records that this shape never actually occurs, so the fallback (not a data-loss risk) is the only behavior this covers",
+      (_label, occurrenceID) => {
+        const sighting = normalizeGbifRecord(
+          validRecord({ key: 5938027305, datasetKey: INATURALIST_DATASET_KEY, occurrenceID }),
+        );
+
+        expect(sighting?.id).toBe("gbif:5938027305");
+        expect(sighting?.sourceApi).toBe("gbif");
+      },
+    );
+
+    it("falls back to gbif:<key> when occurrenceID is absent entirely", () => {
+      const sighting = normalizeGbifRecord(
+        validRecord({ key: 5938027305, datasetKey: INATURALIST_DATASET_KEY, occurrenceID: undefined }),
+      );
+
+      expect(sighting?.id).toBe("gbif:5938027305");
+    });
+
+    it("does not remap a record from a different dataset, even if it's iNaturalist-published with an inaturalist.org occurrenceID (e.g. Happywhale-via-iNaturalist) — only this one specific dataset is known to have this exact correspondence", () => {
+      const sighting = normalizeGbifRecord(
+        validRecord({
+          key: 5994195745,
+          datasetKey: "6cb6ab2b-b5ac-4134-9b25-574dcfcbef09", // Happywhale, not the iNat dataset
+          occurrenceID: "https://www.inaturalist.org/observations/333069440",
+        }),
+      );
+
+      expect(sighting?.id).toBe("gbif:5994195745");
+      expect(sighting?.sourceApi).toBe("gbif");
+    });
   });
 });

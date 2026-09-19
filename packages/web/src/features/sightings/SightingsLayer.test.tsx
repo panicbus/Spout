@@ -77,6 +77,48 @@ describe("SightingsLayer", () => {
     );
   });
 
+  it("fades unverified citizen reports rather than rendering them identically to confirmed data (spec.md / ADR 0002)", async () => {
+    vi.mocked(apiClient.fetchSightings).mockResolvedValue([buildSighting()]);
+
+    render(
+      <MapCanvas>
+        <SightingsLayer />
+      </MapCanvas>,
+    );
+    const map = mapInstances[0]!;
+    await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
+    map.trigger("load");
+
+    const pointsLayerCall = map.addLayer.mock.calls.find(
+      (call: unknown[]) => (call[0] as { id: string }).id === SIGHTINGS_POINTS_LAYER_ID,
+    );
+    const paint = (pointsLayerCall?.[0] as { paint: { "circle-opacity": unknown[] } }).paint;
+    expect(paint["circle-opacity"]).toEqual(
+      expect.arrayContaining(["case", ["==", ["get", "verification"], "unverified"]]),
+    );
+  });
+
+  it("renders geoprivacy-obscured coordinates as a larger halo instead of a precise pin (spec.md / ADR 0002)", async () => {
+    vi.mocked(apiClient.fetchSightings).mockResolvedValue([buildSighting()]);
+
+    render(
+      <MapCanvas>
+        <SightingsLayer />
+      </MapCanvas>,
+    );
+    const map = mapInstances[0]!;
+    await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
+    map.trigger("load");
+
+    const pointsLayerCall = map.addLayer.mock.calls.find(
+      (call: unknown[]) => (call[0] as { id: string }).id === SIGHTINGS_POINTS_LAYER_ID,
+    );
+    const paint = (pointsLayerCall?.[0] as { paint: { "circle-radius": unknown[] } }).paint;
+    expect(paint["circle-radius"]).toEqual(
+      expect.arrayContaining(["case", ["get", "coordinatesObscured"]]),
+    );
+  });
+
   it("filters clusters vs. unclustered points using MapLibre's point_count property", async () => {
     vi.mocked(apiClient.fetchSightings).mockResolvedValue([buildSighting()]);
 

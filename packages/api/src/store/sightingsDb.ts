@@ -224,7 +224,32 @@ export function querySightings(db: Database.Database, filter: SightingsFilter): 
   return rows.map(rowToSighting);
 }
 
-/** Whether the store has ever been populated — used to distinguish a true cold start (needs a full backfill) from an ordinary incremental refresh. */
+/** Whether the store has ever been populated at all, from any source — see `hasGbifSightings` for the source-scoped variant `sightingsRefresh.ts` actually needs. */
 export function hasSightings(db: Database.Database): boolean {
   return db.prepare("SELECT 1 FROM sightings LIMIT 1").get() !== undefined;
+}
+
+/**
+ * Whether GBIF has ever contributed a row — distinct from `hasSightings`
+ * (any source), and what `sightingsRefresh.ts` actually needs to gate its
+ * cold-start-vs-incremental backfill decision. Without this distinction,
+ * a fast iNaturalist-direct refresh (R3, `inaturalistRefresh.ts`) landing
+ * first on a fresh deploy — plausible, since both refresh caches are
+ * simultaneously cold on startup — would make `hasSightings(db)` return
+ * true before GBIF ever ran, permanently skipping its 400-day backfill in
+ * favor of the 5-day incremental window forever, with no error.
+ *
+ * Filters by `dataset_id`, not `source_api`: R3's GBIF↔iNaturalist de-dup
+ * convergence (`normalize/sighting.ts`) remaps some genuinely GBIF-origin
+ * rows to `source_api = "inaturalist"`, but their `dataset_id` still
+ * correctly carries GBIF's real dataset key — `"inaturalist-api-direct"`
+ * is the one `dataset_id` value that's reserved specifically for
+ * iNaturalist's own direct API (`normalize/inaturalist.ts`) and never
+ * used by anything GBIF-origin.
+ */
+export function hasGbifSightings(db: Database.Database): boolean {
+  return (
+    db.prepare("SELECT 1 FROM sightings WHERE dataset_id != 'inaturalist-api-direct' LIMIT 1").get() !==
+    undefined
+  );
 }

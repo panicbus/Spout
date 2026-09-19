@@ -1,10 +1,7 @@
-import {
-  SightingSchema,
-  speciesFromScientificName,
-  type License,
-  type Sighting,
-} from "@spout/contracts";
+import { SightingSchema, speciesFromScientificName, type Sighting } from "@spout/contracts";
+import { LICENSE_BY_URL } from "./ccLicenses.js";
 import { isExcludedDataset } from "./exclusions.js";
+import { inaturalistSightingId } from "./inaturalist.js";
 import { tierForPublisher } from "./tier.js";
 
 /** The GBIF occurrence-record fields this normalizer actually reads. GBIF's real records carry many more. */
@@ -25,39 +22,43 @@ export interface GbifOccurrence {
    * below) — verified against live data during R2.
    */
   coordinateUncertaintyInMeters?: number;
+  /** Used only to detect the R3 iNaturalist-dataset de-dup case below — see `INATURALIST_GBIF_DATASET_KEY`. */
+  occurrenceID?: string;
+}
+
+/**
+ * GBIF's "iNaturalist Research-grade Observations" dataset — the same
+ * one `tier.ts`'s citizen-tier entry resolves through. Verified live
+ * (R3): this dataset's `occurrenceID` reliably embeds
+ * `https://www.inaturalist.org/observations/<id>`, where `<id>` is the
+ * exact same numeric id iNaturalist's own direct API
+ * (`sources/inaturalist.ts`) uses for that observation. That
+ * correspondence is what lets `inaturalistIdFromOccurrenceId` below
+ * converge both ingestion paths onto one `Sighting.id` for the same
+ * real-world observation, so the store's plain upsert-by-id
+ * deduplicates them with no separate de-dup pass needed.
+ */
+const INATURALIST_GBIF_DATASET_KEY = "50c9509d-22c7-4a22-a47d-8c48425ef4a7";
+const INATURALIST_OBSERVATION_URL = /^https?:\/\/www\.inaturalist\.org\/observations\/(\d+)$/;
+
+function inaturalistIdFromOccurrenceId(occurrenceID: string | undefined): string | undefined {
+  return occurrenceID?.match(INATURALIST_OBSERVATION_URL)?.[1];
 }
 
 /**
  * GBIF's `license` field is a full legalcode URL, not the short SPDX-ish
  * code its own search facets use (`CC_BY_NC_4_0`, etc. — verified: the
  * facet and the record field use different formats for the same fact).
- * Keyed on the `https://` form (Creative Commons' canonical scheme);
- * `licenseKey` below normalizes an incoming `http://` URL before lookup,
- * since GBIF is inconsistent about the scheme even within one dataset —
- * verified live: `fixtures/gbif/sample-page.json`'s own embedded
- * multimedia metadata uses `https://` for a record whose top-level
- * `license` field uses `http://` for the same license.
- * A license URL not in this map is treated as unknown, not guessed at —
+ * `LICENSE_BY_URL` (`ccLicenses.ts`) is keyed on the `https://` form
+ * (Creative Commons' canonical scheme); `licenseKey` below normalizes an
+ * incoming `http://` URL before lookup, since GBIF is inconsistent about
+ * the scheme even within one dataset — verified live:
+ * `fixtures/gbif/sample-page.json`'s own embedded multimedia metadata
+ * uses `https://` for a record whose top-level `license` field uses
+ * `http://` for the same license.
+ * A license URL not in that map is treated as unknown, not guessed at —
  * see `normalizeGbifRecord`'s drop-on-unknown-license behavior below.
  */
-const LICENSE_BY_URL: Record<string, License> = {
-  "https://creativecommons.org/publicdomain/zero/1.0/legalcode": {
-    id: "CC0_1_0",
-    url: "https://creativecommons.org/publicdomain/zero/1.0/legalcode",
-    commercialUse: true,
-  },
-  "https://creativecommons.org/licenses/by/4.0/legalcode": {
-    id: "CC_BY_4_0",
-    url: "https://creativecommons.org/licenses/by/4.0/legalcode",
-    commercialUse: true,
-  },
-  "https://creativecommons.org/licenses/by-nc/4.0/legalcode": {
-    id: "CC_BY_NC_4_0",
-    url: "https://creativecommons.org/licenses/by-nc/4.0/legalcode",
-    commercialUse: false,
-  },
-};
-
 function licenseKey(url: string): string {
   return url.replace(/^http:\/\//, "https://");
 }
@@ -120,14 +121,23 @@ export function normalizeGbifRecord(record: GbifOccurrence): Sighting | null {
 
   if (!record.eventDate) return null;
 
+  // Converge onto R3's iNaturalist id/sourceApi for this one specific
+  // dataset (see INATURALIST_GBIF_DATASET_KEY's doc comment) — falls
+  // back to the ordinary gbif:<key> id when occurrenceID is missing or
+  // doesn't match the expected shape, rather than dropping the record.
+  const inaturalistId =
+    record.datasetKey === INATURALIST_GBIF_DATASET_KEY
+      ? inaturalistIdFromOccurrenceId(record.occurrenceID)
+      : undefined;
+
   const candidate = {
-    id: `gbif:${record.key}`,
+    id: inaturalistId ? inaturalistSightingId(inaturalistId) : `gbif:${record.key}`,
     species,
     lat: record.decimalLatitude,
     lon: record.decimalLongitude,
     observedAt: record.eventDate,
     tier: publisher.tier,
-    sourceApi: "gbif" as const,
+    sourceApi: inaturalistId ? ("inaturalist" as const) : ("gbif" as const),
     verification: "verified" as const,
     coordinatesObscured:
       record.coordinateUncertaintyInMeters !== undefined &&
@@ -149,7 +159,7 @@ export function normalizeGbifRecord(record: GbifOccurrence): Sighting | null {
     // passed every check this function knows about and still didn't fit
     // the shared contract — worth a log line, since it's the signal that
     // GBIF sent something this normalizer hasn't seen before.
-    console.warn(`normalizeGbifRecord: dropping gbif:${record.key}, failed schema validation:`, result.error.message);
+    console.warn(`normalizeGbifRecord: dropping ${candidate.id}, failed schema validation:`, result.error.message);
     return null;
   }
   return result.data;

@@ -1,7 +1,8 @@
-import { buildSighting } from "@spout/contracts/fixtures.js";
+import { buildAttribution, buildSighting } from "@spout/contracts/fixtures.js";
 import { beforeEach, describe, expect, it } from "vitest";
 import type Database from "better-sqlite3";
 import {
+  hasGbifSightings,
   hasSightings,
   openSightingsDb,
   querySightings,
@@ -133,5 +134,41 @@ describe("hasSightings", () => {
     const db = openSightingsDb(":memory:");
     upsertSightings(db, [buildSighting()]);
     expect(hasSightings(db)).toBe(true);
+  });
+});
+
+describe("hasGbifSightings", () => {
+  it("returns false for an empty store", () => {
+    const db = openSightingsDb(":memory:");
+    expect(hasGbifSightings(db)).toBe(false);
+  });
+
+  it("returns true once a GBIF-origin row exists", () => {
+    const db = openSightingsDb(":memory:");
+    upsertSightings(db, [buildSighting()]); // default fixture attribution.datasetId is GBIF-shaped, not "inaturalist-api-direct"
+    expect(hasGbifSightings(db)).toBe(true);
+  });
+
+  it("returns false when the store only has rows from iNaturalist's direct API, even though hasSightings would return true — the R3 bug this exists to prevent: a fast iNaturalist-direct refresh landing first on a fresh deploy must not make GBIF's cold-start check think it has already backfilled", () => {
+    const db = openSightingsDb(":memory:");
+    upsertSightings(db, [
+      buildSighting({ attribution: buildAttribution({ datasetId: "inaturalist-api-direct" }) }),
+    ]);
+
+    expect(hasSightings(db)).toBe(true);
+    expect(hasGbifSightings(db)).toBe(false);
+  });
+
+  it("returns true for a GBIF-origin row even after R3's de-dup convergence remaps it to sourceApi \"inaturalist\" — dataset_id, not source_api, is what distinguishes true origin", () => {
+    const db = openSightingsDb(":memory:");
+    upsertSightings(db, [
+      buildSighting({
+        id: "inaturalist:1",
+        sourceApi: "inaturalist", // converged id/sourceApi (see normalize/sighting.ts), but still GBIF-origin data
+        attribution: buildAttribution({ datasetId: "50c9509d-22c7-4a22-a47d-8c48425ef4a7" }),
+      }),
+    ]);
+
+    expect(hasGbifSightings(db)).toBe(true);
   });
 });

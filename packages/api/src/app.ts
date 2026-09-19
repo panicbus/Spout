@@ -8,6 +8,7 @@ import { healthRoute } from "./routes/health.js";
 import { createProbabilityRoute } from "./routes/probability.js";
 import { createSightingsRoute } from "./routes/sightings.js";
 import { fetchLatestProbabilityGrid } from "./sources/whalewatch.js";
+import { createINaturalistRefreshCache } from "./store/inaturalistRefresh.js";
 import { ProbabilityCache } from "./store/probabilityCache.js";
 import { openSightingsDb } from "./store/sightingsDb.js";
 import { createSightingsRefreshCache } from "./store/sightingsRefresh.js";
@@ -33,6 +34,10 @@ const SIGHTINGS_REFRESH_TTL_MS = 1000 * 60 * 60 * 6;
  * ceiling.
  */
 const SIGHTINGS_REFRESH_MAX_STALE_MS = 1000 * 60 * 60 * 24 * 7;
+/** iNaturalist has real new data multiple times a day (unlike GBIF's weeks-long lag) — a 1h cadence keeps "latest" genuinely fresh without hammering the upstream. */
+const INATURALIST_REFRESH_TTL_MS = 1000 * 60 * 60;
+/** Same reasoning as SIGHTINGS_REFRESH_MAX_STALE_MS, applied to the faster-refreshing iNaturalist cache. */
+const INATURALIST_REFRESH_MAX_STALE_MS = 1000 * 60 * 60 * 24 * 7;
 
 const DEFAULT_SIGHTINGS_DB_PATH = fileURLToPath(new URL("../data/spout.db", import.meta.url));
 
@@ -41,6 +46,8 @@ export interface CreateAppOptions {
   probabilityFetcher?: () => Promise<ProbabilityGrid>;
   /** Overridable for tests; defaults to the real GBIF-fetching source. */
   sightingsFetcher?: (options: { sinceDate: string }) => Promise<Sighting[]>;
+  /** Overridable for tests; defaults to the real iNaturalist-fetching source. */
+  inaturalistFetcher?: (options: { sinceDate: string }) => Promise<Sighting[]>;
   /** Overridable for tests (e.g. an in-memory db); defaults to a real file under packages/api/data/. */
   sightingsDb?: Database.Database;
 }
@@ -69,10 +76,25 @@ export function createApp(options: CreateAppOptions = {}) {
     maxStaleMs: SIGHTINGS_REFRESH_MAX_STALE_MS,
     fetcher: options.sightingsFetcher,
   });
+  const inaturalistRefreshCache = createINaturalistRefreshCache(sightingsDb, {
+    ttlMs: INATURALIST_REFRESH_TTL_MS,
+    maxStaleMs: INATURALIST_REFRESH_MAX_STALE_MS,
+    fetcher: options.inaturalistFetcher,
+  });
 
   app.route("/", healthRoute);
   app.route("/", createProbabilityRoute(probabilityCache));
-  app.route("/", createSightingsRoute(sightingsDb, sightingsRefreshCache));
+  app.route(
+    "/",
+    createSightingsRoute(sightingsDb, [
+      { name: "GBIF", cache: sightingsRefreshCache },
+      // Runs second deliberately — see createSightingsRoute's doc
+      // comment: whichever refresh's write lands last wins the
+      // converged-id upsert race, and iNaturalist-direct's fields are
+      // the more authoritative copy for any observation both sources see.
+      { name: "iNaturalist", cache: inaturalistRefreshCache },
+    ]),
+  );
   return app;
 }
 

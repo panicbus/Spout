@@ -3,7 +3,7 @@ import type Database from "better-sqlite3";
 import { fetchGbifSightings } from "../sources/gbif.js";
 import { dateDaysAgo } from "../timeWindow.js";
 import { TtlCache } from "./ttlCache.js";
-import { hasSightings, upsertSightings } from "./sightingsDb.js";
+import { hasGbifSightings, upsertSightings } from "./sightingsDb.js";
 
 /**
  * Wide enough to comfortably cover the longest window the API serves
@@ -68,7 +68,7 @@ export function createSightingsRefreshCache(
     ttlMs: options.ttlMs,
     maxStaleMs: options.maxStaleMs,
     fetcher: async () => {
-      const sinceDate = hasSightings(db)
+      const sinceDate = hasGbifSightings(db)
         ? dateDaysAgo(INCREMENTAL_REFRESH_OVERLAP_DAYS)
         : dateDaysAgo(BACKFILL_DAYS);
       const sightings = await fetcher({ sinceDate });

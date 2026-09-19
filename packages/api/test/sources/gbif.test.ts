@@ -18,12 +18,18 @@ describe("fetchGbifSightings", () => {
     // return an empty page so this test isolates one species's fetch+
     // normalize path against a real, unmodified GBIF response.
     const fetchImpl = vi.fn(async (url: string | URL) => {
-      const href = url.toString();
+      const parsed = new URL(url.toString());
       // The real fixture's own endOfRecords is false (it's page 1 of a
       // bigger real result set) — only serve it once, at offset=0, then
       // report the page as finished so this test isolates exactly what
-      // fetching ONE real page and normalizing it produces.
-      if (href.startsWith(GBIF_SEARCH_URL) && href.includes("Megaptera") && href.includes("offset=0")) {
+      // fetching ONE real page and normalizing it produces. Reads the
+      // actual `offset` param rather than substring-matching the URL —
+      // "offset=0" would also false-match "offset=20"/"offset=200", etc.
+      if (
+        parsed.origin + parsed.pathname === GBIF_SEARCH_URL &&
+        parsed.searchParams.get("scientificName")?.includes("Megaptera") &&
+        parsed.searchParams.get("offset") === "0"
+      ) {
         return new Response(JSON.stringify({ ...realPage, endOfRecords: true }));
       }
       return new Response(JSON.stringify(emptyPage()));
@@ -33,7 +39,15 @@ describe("fetchGbifSightings", () => {
 
     expect(sightings.length).toBeGreaterThan(0);
     expect(sightings.every((s) => s.species === "humpback-whale")).toBe(true);
-    expect(sightings.every((s) => s.sourceApi === "gbif")).toBe(true);
+    // Every record in this real fixture is genuinely from GBIF's
+    // iNaturalist dataset (verified: each has a datasetKey of
+    // 50c9509d-... and an occurrenceID like
+    // https://www.inaturalist.org/observations/<id>) — so R3's de-dup
+    // convergence (normalize/sighting.ts) correctly re-ids all of them
+    // onto sourceApi "inaturalist", not "gbif". This is real data
+    // proving that convergence actually fires, not a synthetic case.
+    expect(sightings.every((s) => s.sourceApi === "inaturalist")).toBe(true);
+    expect(sightings.every((s) => s.id.startsWith("inaturalist:"))).toBe(true);
   });
 
   it("paginates until endOfRecords is true, not just fetching the first page", async () => {
@@ -43,11 +57,13 @@ describe("fetchGbifSightings", () => {
     const page2 = { offset: 2, limit: 2, endOfRecords: true, count: 3, results: [recordFixture(3)] };
 
     const fetchImpl = vi.fn(async (url: string | URL) => {
-      const href = url.toString();
-      if (!href.includes("Balaenoptera+musculus") && !href.includes("Balaenoptera%20musculus")) {
+      const parsed = new URL(url.toString());
+      if (!parsed.searchParams.get("scientificName")?.includes("musculus")) {
         return new Response(JSON.stringify(emptyPage()));
       }
-      const isSecondPage = href.includes("offset=2");
+      // Reads the actual `offset` param — "offset=2" would also
+      // false-match "offset=20"/"offset=200" via naive substring checks.
+      const isSecondPage = parsed.searchParams.get("offset") === "2";
       return new Response(JSON.stringify(isSecondPage ? page2 : page1));
     });
 

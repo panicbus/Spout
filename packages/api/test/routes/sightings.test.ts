@@ -14,6 +14,7 @@ describe("GET /api/sightings", () => {
     const app = createApp({
       sightingsDb: db,
       sightingsFetcher: vi.fn().mockResolvedValue([]), // no new data; the pre-seeded row is what we're testing against
+      inaturalistFetcher: vi.fn().mockResolvedValue([]),
     });
 
     const res = await app.request("/api/sightings");
@@ -30,7 +31,11 @@ describe("GET /api/sightings", () => {
       buildSighting({ id: "a", species: "orca" }),
       buildSighting({ id: "b", species: "gray-whale" }),
     ]);
-    const app = createApp({ sightingsDb: db, sightingsFetcher: vi.fn().mockResolvedValue([]) });
+    const app = createApp({
+      sightingsDb: db,
+      sightingsFetcher: vi.fn().mockResolvedValue([]),
+      inaturalistFetcher: vi.fn().mockResolvedValue([]),
+    });
 
     const res = await app.request("/api/sightings?species=orca");
 
@@ -44,7 +49,11 @@ describe("GET /api/sightings", () => {
       buildSighting({ id: "inside", lat: 36.5, lon: -122.1 }),
       buildSighting({ id: "outside", lat: 45.0, lon: -122.1 }),
     ]);
-    const app = createApp({ sightingsDb: db, sightingsFetcher: vi.fn().mockResolvedValue([]) });
+    const app = createApp({
+      sightingsDb: db,
+      sightingsFetcher: vi.fn().mockResolvedValue([]),
+      inaturalistFetcher: vi.fn().mockResolvedValue([]),
+    });
 
     const res = await app.request("/api/sightings?bbox=-126,32,-117,42");
 
@@ -58,7 +67,11 @@ describe("GET /api/sightings", () => {
       buildSighting({ id: "recent", observedAt: new Date().toISOString() }),
       buildSighting({ id: "old", observedAt: "2020-01-01T00:00:00.000Z" }),
     ]);
-    const app = createApp({ sightingsDb: db, sightingsFetcher: vi.fn().mockResolvedValue([]) });
+    const app = createApp({
+      sightingsDb: db,
+      sightingsFetcher: vi.fn().mockResolvedValue([]),
+      inaturalistFetcher: vi.fn().mockResolvedValue([]),
+    });
 
     const res = await app.request("/api/sightings");
 
@@ -68,7 +81,11 @@ describe("GET /api/sightings", () => {
 
   it("rejects an invalid query with 400", async () => {
     const db = openSightingsDb(":memory:");
-    const app = createApp({ sightingsDb: db, sightingsFetcher: vi.fn().mockResolvedValue([]) });
+    const app = createApp({
+      sightingsDb: db,
+      sightingsFetcher: vi.fn().mockResolvedValue([]),
+      inaturalistFetcher: vi.fn().mockResolvedValue([]),
+    });
 
     const res = await app.request("/api/sightings?window=not-a-real-window");
 
@@ -77,7 +94,11 @@ describe("GET /api/sightings", () => {
 
   it("rejects a bbox with a trailing comma (empty segment) with 400, rather than silently treating it as 0", async () => {
     const db = openSightingsDb(":memory:");
-    const app = createApp({ sightingsDb: db, sightingsFetcher: vi.fn().mockResolvedValue([]) });
+    const app = createApp({
+      sightingsDb: db,
+      sightingsFetcher: vi.fn().mockResolvedValue([]),
+      inaturalistFetcher: vi.fn().mockResolvedValue([]),
+    });
 
     const res = await app.request("/api/sightings?bbox=-126,32,-117,");
 
@@ -86,7 +107,11 @@ describe("GET /api/sightings", () => {
 
   it("rejects a non-numeric bbox segment with 400", async () => {
     const db = openSightingsDb(":memory:");
-    const app = createApp({ sightingsDb: db, sightingsFetcher: vi.fn().mockResolvedValue([]) });
+    const app = createApp({
+      sightingsDb: db,
+      sightingsFetcher: vi.fn().mockResolvedValue([]),
+      inaturalistFetcher: vi.fn().mockResolvedValue([]),
+    });
 
     const res = await app.request("/api/sightings?bbox=abc,32,-117,42");
 
@@ -95,7 +120,11 @@ describe("GET /api/sightings", () => {
 
   it("rejects an unrecognized commercialOnly value with 400, rather than silently disabling the licensing filter", async () => {
     const db = openSightingsDb(":memory:");
-    const app = createApp({ sightingsDb: db, sightingsFetcher: vi.fn().mockResolvedValue([]) });
+    const app = createApp({
+      sightingsDb: db,
+      sightingsFetcher: vi.fn().mockResolvedValue([]),
+      inaturalistFetcher: vi.fn().mockResolvedValue([]),
+    });
 
     const res = await app.request("/api/sightings?commercialOnly=TRUE");
 
@@ -104,7 +133,11 @@ describe("GET /api/sightings", () => {
 
   it("accepts commercialOnly=false explicitly", async () => {
     const db = openSightingsDb(":memory:");
-    const app = createApp({ sightingsDb: db, sightingsFetcher: vi.fn().mockResolvedValue([]) });
+    const app = createApp({
+      sightingsDb: db,
+      sightingsFetcher: vi.fn().mockResolvedValue([]),
+      inaturalistFetcher: vi.fn().mockResolvedValue([]),
+    });
 
     const res = await app.request("/api/sightings?commercialOnly=false");
 
@@ -117,6 +150,7 @@ describe("GET /api/sightings", () => {
     const app = createApp({
       sightingsDb: db,
       sightingsFetcher: vi.fn().mockRejectedValue(new Error("GBIF is down")),
+      inaturalistFetcher: vi.fn().mockResolvedValue([]),
     });
 
     const res = await app.request("/api/sightings");
@@ -125,6 +159,58 @@ describe("GET /api/sightings", () => {
     // own value would normally throw — but the store already has rows
     // from a previous run (simulated by the pre-seeded upsert above),
     // so the route should still answer from the store.
+    expect(res.status).toBe(200);
+  });
+
+  it("ensures both the GBIF and iNaturalist refreshes have run before answering", async () => {
+    const db = openSightingsDb(":memory:");
+    const sightingsFetcher = vi.fn().mockResolvedValue([]);
+    const inaturalistFetcher = vi.fn().mockResolvedValue([]);
+    const app = createApp({ sightingsDb: db, sightingsFetcher, inaturalistFetcher });
+
+    await app.request("/api/sightings");
+
+    expect(sightingsFetcher).toHaveBeenCalled();
+    expect(inaturalistFetcher).toHaveBeenCalled();
+  });
+
+  it("runs the GBIF refresh before the iNaturalist refresh, so a converged id's iNaturalist-direct write always lands last and wins the upsert race", async () => {
+    // GBIF is made artificially slower than iNaturalist here specifically
+    // so this test can tell "sequential" apart from "concurrent": under
+    // the old Promise.allSettled-concurrent implementation, iNaturalist's
+    // instantly-resolving fetch would complete (and its write would land)
+    // BEFORE GBIF's slower one, regardless of array order — only an
+    // actually-sequential await guarantees GBIF completes first no matter
+    // which fetch is slower.
+    const db = openSightingsDb(":memory:");
+    const callOrder: string[] = [];
+    const sightingsFetcher = vi.fn().mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      callOrder.push("gbif");
+      return [];
+    });
+    const inaturalistFetcher = vi.fn().mockImplementation(async () => {
+      callOrder.push("inaturalist");
+      return [];
+    });
+    const app = createApp({ sightingsDb: db, sightingsFetcher, inaturalistFetcher });
+
+    await app.request("/api/sightings");
+
+    expect(callOrder).toEqual(["gbif", "inaturalist"]);
+  });
+
+  it("still answers from the store if only the iNaturalist refresh fails", async () => {
+    const db = openSightingsDb(":memory:");
+    upsertSightings(db, [buildSighting()]);
+    const app = createApp({
+      sightingsDb: db,
+      sightingsFetcher: vi.fn().mockResolvedValue([]),
+      inaturalistFetcher: vi.fn().mockRejectedValue(new Error("iNaturalist is down")),
+    });
+
+    const res = await app.request("/api/sightings");
+
     expect(res.status).toBe(200);
   });
 });
