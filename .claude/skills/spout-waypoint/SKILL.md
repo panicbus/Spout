@@ -26,6 +26,17 @@ project can't easily re-verify live). Round-splitting "for reviewability"
 is unusually large, since the review step's cost is closer to a fixed
 per-waypoint overhead than a diff-size-proportional one.
 
+**Revised after R4b:** cutting the fan-out (R4a's fix) wasn't enough on its
+own — with two lighter passes in place, the new dominant cost became the
+*orchestrator* (you) independently re-reading nearly every file both passes
+had already read, to re-verify findings they'd already verified. That's real
+protection for the cases it catches, but doing it for every finding regardless
+of type made the "cheap" review nearly as expensive as the fan-out it
+replaced. Step 3 now has three tiers instead of two — most rounds don't need
+`review-pass-nico`'s full two-pass treatment — and step 4's verification
+bullet now scopes *what* gets independently re-checked instead of defaulting
+to "everything."
+
 ## 0. Before fully building an uncertain technical bet, measure it first
 
 If a round's approach rests on a claim you're not actually sure of yet (will
@@ -69,42 +80,73 @@ review passes will work from.
 
 ## 3. Run the review pass
 
-Default: `Skill({ skill: "review-pass-nico" })` — two concurrent single-pass
-reviewers (a quality checklist + an adversarial pass), not a many-agent
-fan-out. When briefing its two passes, give them the Spout-specific context
-the generic skill can't know on its own: what was built this round (file by
+Three tiers — pick the cheapest one that actually fits the round, don't
+default to the middle tier out of habit:
+
+- **Tier 1 — single pass (small/routine round).** A handful of files, no new
+  architectural pattern, no data-correctness or user-honesty surface, mostly
+  following a pattern already established elsewhere in this codebase (e.g. a
+  fourth `useFetch`-backed hook, another entry in an existing registry/map,
+  a small bugfix contained to one file). One `Agent({ subagent_type:
+  "general-purpose", ... })` call, briefed the same specific way as below
+  (file-by-file, settled decisions flagged, concrete things to pressure-test)
+  — just one reviewer instead of two. If it turns up nothing, you're done
+  with review; if it turns up something that smells architectural or
+  data-correctness-shaped, escalate to Tier 2 rather than patching narrowly.
+- **Tier 2 — `review-pass-nico` (default for a normal round).** Two
+  concurrent single-pass reviewers (quality checklist + adversarial), not a
+  many-agent fan-out. Use this whenever a round adds new UI surface a real
+  user will interact with, a new hook/architecture pattern, anything
+  touching accessibility, or anything touching what gets rendered/claimed
+  about data honesty (a citation, a precision figure, a license) — R4b was
+  this tier and it caught real bugs in exactly those categories.
+- **Tier 3 — heavy combo (high-stakes only).** `Skill({ skill:
+  "code-review", args: "--level medium" })` in parallel with `Agent({
+  subagent_type: "antagonist", run_in_background: true, ... })`. Reserve for
+  a new dependency, a data-correctness-critical rewrite, or something this
+  project can't cheaply re-verify against live data. If `subagent_type:
+  "antagonist"` isn't in the available list yet this session, fall back to
+  `subagent_type: "general-purpose"` with the antagonist's persona
+  instructions (`.claude/agents/antagonist.md`) pasted into the prompt
+  directly.
+
+Whichever tier, give the reviewer(s) the Spout-specific context a generic
+skill invocation can't know on its own: what was built this round (file by
 file, not just a feature name), what decisions were already settled and
 shouldn't be re-litigated (point at the relevant ADRs), and 4-8 concrete
 things to specifically pressure-test given what's novel about this round's
 code. A vague "review this" prompt gets a vague review regardless of which
-process runs it.
-
-Escalate to the heavy combo — `Skill({ skill: "code-review", args:
-"--level medium" })` in parallel with `Agent({ subagent_type: "antagonist",
-run_in_background: true, ... })` — only for a genuinely high-stakes round
-(a new dependency, a data-correctness-critical rewrite, something this
-project can't cheaply re-verify against live data). If `subagent_type:
-"antagonist"` isn't in the available list yet this session, fall back to
-`subagent_type: "general-purpose"` with the antagonist's persona
-instructions (`.claude/agents/antagonist.md`) pasted into the prompt
-directly.
+tier runs it.
 
 While a review pass runs in the background, do NOT keep editing the files
 it's reviewing — R1's antagonist lost time to a stale read because staging
 kept moving underneath it mid-review. Either wait, or work on something in
 a completely disjoint part of the tree.
 
-## 4. Fix every real finding from both passes
+## 4. Fix every real finding from the pass(es)
 
-Not a subset. For each finding:
+Not a subset. But *re-verifying* every finding yourself before fixing it is
+not the default either — that became R4b's real cost, not the review passes
+themselves. Scope re-verification by what kind of finding it is:
 
-- **Verify it, don't just trust the prose**, especially factual/numeric
-  claims — curl the real endpoint, re-decode the real fixture, or run a
-  quick script to check a number before accepting it. Both review passes
-  have been right almost every time, but not always (R1's antagonist
-  flagged files as unstaged that were actually already staged — a timing
-  artifact of reviewing mid-edit, not a real bug). Independent verification
-  is cheap; take it.
+- **`PLAUSIBLE`-marked findings** — always independently verify before
+  deciding whether to fix. The pass itself said its reasoning wasn't fully
+  traced.
+- **A `CONFIRMED` finding that rests on a factual/numeric/external claim**
+  (a library's real behavior, a citation, a measured number, what an ADR
+  actually says) — always independently verify. This is genuinely cheap
+  (curl the endpoint, grep the ADR, check the library source) and has caught
+  real errors before (R1's antagonist flagged files as unstaged that were
+  actually already staged — a timing artifact of reviewing mid-edit).
+- **A `CONFIRMED` finding that's a traced code-logic bug** (a stale closure,
+  a missed edge case, a race) **with a clear failure scenario already
+  spelled out** — read the cited lines to confirm the finding's premise is
+  real (the file/lines it points at actually say what it claims), then trust
+  the trace and fix it. Re-deriving the entire call chain yourself from
+  scratch, when the pass already did that and showed its work, is the
+  redundant step to cut. If two passes independently converged on the same
+  finding, that convergence is itself a form of verification — trust it more,
+  not less.
 - **If a fix changes behavior, prove it red-then-green** — temporarily
   revert the fix, confirm the new/existing test actually fails, restore
   it. A test added after the fix with no red phase hasn't proven anything.
@@ -118,8 +160,14 @@ Not a subset. For each finding:
   `@spout/contracts/fixtures.js`) rather than leaving each copy to drift.
 
 After each individual fix: prove it red-then-green (above) and run a
-**targeted** check — typecheck plus the specific test file(s) touched, not
-the whole sweep. Re-run the **full** sweep from step 1 (typecheck, lint,
+**targeted** check, scoped to literally just what changed — e.g.
+`npx vitest run <path/to/the/one/test/file>`, `npx eslint <path/to/the/one/
+file>`, `npx tsc --noEmit` only if the fix touched types shared across files.
+Not `npm run lint`/`npm run test` at the workspace root — those re-check
+every file in every package regardless of what changed, which is exactly the
+repeated-full-sweep cost this step exists to avoid (R4b ran the full
+root-wide lint 3 times in one waypoint chasing fixes that only ever touched
+1-2 files each). Re-run the **full** sweep from step 1 (typecheck, lint,
 every test, build, e2e) **once**, after every finding from this round is
 fixed, right before committing — not after each individual fix. The targeted
 check already catches a fix's own bugs; the full sweep's job is to catch
