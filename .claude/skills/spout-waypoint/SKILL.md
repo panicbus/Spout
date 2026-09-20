@@ -1,18 +1,43 @@
 ---
 name: spout-waypoint
-description: End-of-round ritual for the Spout project — full verification sweep, /code-review, an antagonist pass, fixing every real finding, and a real commit. Use at the end of every Spout build round (R0, R1, R2, ...) before considering it done, and any time a meaningful chunk of Spout work needs to land safely.
+description: End-of-round ritual for the Spout project — full verification sweep, a lightweight concurrent review pass, fixing every real finding, and a real commit. Use at the end of every Spout build round (R0, R1, R2, ...) before considering it done, and any time a meaningful chunk of Spout work needs to land safely.
 ---
 
 # Spout waypoint
 
-Ran twice already (R0, R1), identically both times, each time surfacing
-real bugs neither pass alone would have caught. This is that ritual,
-written down so it runs the same way every round instead of being
-re-derived from memory.
+Ran through R0-R4a, each time surfacing real bugs neither review pass alone
+would have caught. This is that ritual, written down so it runs the same way
+every round instead of being re-derived from memory.
 
 **The whole point is that nothing gets skipped under time pressure.**
 Every step below has already prevented a real bug from shipping at least
 once.
+
+**Revised after R4a** (see `spout-antagonist-workflow.md` memory for the full
+reasoning): R4a's review step alone — a 10-agent `/code-review` fan-out plus a
+separate antagonist — burned over 1.3M tokens for one round, dwarfing the
+actual implementation work. Steps 3 and 4 below now reflect the lighter
+process adopted after that: `/review-pass-nico` (two concurrent single-pass
+reviewers, not a many-agent fan-out) is the default; the full heavy combo
+(`/code-review` + a dedicated antagonist) is reserved for genuinely high-stakes
+rounds (a new dependency, a data-correctness-critical rewrite, something this
+project can't easily re-verify live). Round-splitting "for reviewability"
+(R4a/R4b) is also retired as a default — one waypoint per round unless a round
+is unusually large, since the review step's cost is closer to a fixed
+per-waypoint overhead than a diff-size-proportional one.
+
+## 0. Before fully building an uncertain technical bet, measure it first
+
+If a round's approach rests on a claim you're not actually sure of yet (will
+this interpolation technique look good enough, will this query be fast
+enough, does this library actually support what the docs imply), write the
+smallest possible script or snippet to check that claim against real data
+BEFORE building the full tested implementation around it. R4a built, tested,
+and wired a complete CPU-interpolation approach for smoothing the probability
+layer before measuring that it only helped ~14% of the time — the measurement
+script that settled it was 15 lines and could have come first. Not every
+round has one of these; most don't. When one does, the cheap check goes
+before the real build, not after.
 
 ## 1. Full local verification, before either review pass
 
@@ -42,27 +67,32 @@ Do not proceed to review with anything red here.
 `git add -A`, then `git status --short` to see the real diff surface both
 review passes will work from.
 
-## 3. Run both review passes — in parallel, in one message
+## 3. Run the review pass
 
-- `Skill({ skill: "code-review", args: "--level medium" })`
-- `Agent({ subagent_type: "antagonist", run_in_background: true, ... })`
-  — give it a full, specific brief: what was built this round (file by
-  file, not just a feature name), what decisions were already settled
-  and shouldn't be re-litigated (point at the relevant ADRs), and 4-8
-  concrete things to specifically pressure-test given what's novel about
-  this round's code. A vague "review this" prompt gets a vague review.
+Default: `Skill({ skill: "review-pass-nico" })` — two concurrent single-pass
+reviewers (a quality checklist + an adversarial pass), not a many-agent
+fan-out. When briefing its two passes, give them the Spout-specific context
+the generic skill can't know on its own: what was built this round (file by
+file, not just a feature name), what decisions were already settled and
+shouldn't be re-litigated (point at the relevant ADRs), and 4-8 concrete
+things to specifically pressure-test given what's novel about this round's
+code. A vague "review this" prompt gets a vague review regardless of which
+process runs it.
 
-If `subagent_type: "antagonist"` isn't in the available list yet this
-session (it's a project agent, only picked up after the first time this
-session sees `.claude/agents/antagonist.md`), fall back to
+Escalate to the heavy combo — `Skill({ skill: "code-review", args:
+"--level medium" })` in parallel with `Agent({ subagent_type: "antagonist",
+run_in_background: true, ... })` — only for a genuinely high-stakes round
+(a new dependency, a data-correctness-critical rewrite, something this
+project can't cheaply re-verify against live data). If `subagent_type:
+"antagonist"` isn't in the available list yet this session, fall back to
 `subagent_type: "general-purpose"` with the antagonist's persona
-instructions pasted into the prompt directly. It'll be available as a
-real type on the next invocation.
+instructions (`.claude/agents/antagonist.md`) pasted into the prompt
+directly.
 
-While the antagonist runs in the background, do NOT keep editing the
-files it's reviewing — R1's antagonist lost time to a stale read because
-staging kept moving underneath it mid-review. Either wait, or work on
-something in a completely disjoint part of the tree.
+While a review pass runs in the background, do NOT keep editing the files
+it's reviewing — R1's antagonist lost time to a stale read because staging
+kept moving underneath it mid-review. Either wait, or work on something in
+a completely disjoint part of the tree.
 
 ## 4. Fix every real finding from both passes
 
@@ -87,8 +117,15 @@ Not a subset. For each finding:
   `ProbabilityGrid` test fixtures consolidated into
   `@spout/contracts/fixtures.js`) rather than leaving each copy to drift.
 
-Re-run the full verification sweep from step 1 after fixing — every time,
-not just once at the end. Fixes have their own bugs.
+After each individual fix: prove it red-then-green (above) and run a
+**targeted** check — typecheck plus the specific test file(s) touched, not
+the whole sweep. Re-run the **full** sweep from step 1 (typecheck, lint,
+every test, build, e2e) **once**, after every finding from this round is
+fixed, right before committing — not after each individual fix. The targeted
+check already catches a fix's own bugs; the full sweep's job is to catch
+cross-cutting breakage (a rename that missed a call site elsewhere, a shared
+hook two features both use), which only needs checking once all fixes have
+landed, not after every single one.
 
 ## 5. Commit
 

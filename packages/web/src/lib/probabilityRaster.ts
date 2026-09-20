@@ -1,9 +1,9 @@
-import type { Bbox, ProbabilityGrid } from "@spout/contracts";
+import { bitAt, type Bbox, type ProbabilityGrid } from "@spout/contracts";
 
 export interface ProbabilityRasterImage {
   width: number;
   height: number;
-  /** RGBA, `width * height * 4` bytes, row-major. Nodata pixels are `[0,0,0,0]` — fully transparent, never a fabricated color. */
+  /** RGBA, `width * height * 4` bytes, row-major. Nodata/land pixels are `[0,0,0,0]` — fully transparent, never a fabricated color. */
   pixels: Uint8ClampedArray;
 }
 
@@ -37,34 +37,58 @@ function colorForProbability(probability: number): [number, number, number] {
   return COLOR_STOPS[COLOR_STOPS.length - 1]!.rgb;
 }
 
+function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
 /**
- * Rasterizes `grid.cells` into an RGBA pixel buffer, `cols` wide by `rows`
- * tall — one pixel per real model cell, nodata cells left transparent.
- * Pure and DOM-free on purpose (no `document`/`canvas` touched here): the
- * actual `HTMLCanvasElement` construction lives in `rasterImageToDataUrl`,
- * so this half stays trivially unit-testable without a real 2D context.
+ * Rasterizes `grid.cells` into an RGBA pixel buffer, supersampled
+ * `grid.landMask.factor`x beyond the grid's own `cols`x`rows` — one
+ * source pixel per real model cell, nearest-neighbor-duplicated across
+ * each cell's `factor x factor` block of output pixels, then trimmed to
+ * the true coastline using `grid.landMask` (server-computed — see
+ * `packages/api/src/raster/landMask.ts`'s doc comment for why). Pure and
+ * DOM-free on purpose (no `document`/`canvas` touched here): the actual
+ * `HTMLCanvasElement` construction lives in `rasterImageToDataUrl`, so
+ * this half stays trivially unit-testable without a real 2D context.
  *
  * Feeding this into MapLibre as an `image`/`raster` source (see
  * `ProbabilityLayer.tsx`) lets the GPU's own bilinear texture sampling
- * smooth between adjacent cells when the image is scaled up on screen —
- * real interpolation of real model output, the same operation
- * `densifyProbabilityGrid` did on the CPU in an earlier draft of this
- * round, just computed once per pixel by the GPU instead of precomputing
- * extra GeoJSON points. Superior specifically at the coastline: texture
- * sampling blends smoothly right up to a transparent edge, whereas the
- * CPU approach had to drop any point missing even one of its four real
- * neighbors — verified live against the real WhaleWatch grid that this
- * dropped the vast majority of potential new points specifically in the
- * coastal band (the CPU version only gained ~14% more points there),
- * which is exactly where the model's interesting nearshore-high structure
- * lives. That empirical result is why this file exists instead of a
- * revived `densifyProbabilityGrid`.
+ * additionally smooth between adjacent output pixels when the image is
+ * scaled up on screen. Supersampling and GPU smoothing solve two
+ * different problems: GPU smoothing blends *between* real cells;
+ * supersampling is what lets the land mask trim a cell's rendered edges
+ * to the real coastline instead of showing its full ~11km square
+ * footprint. Verified live: a 1-pixel-per-cell version rendered visibly
+ * over land near every bay along the CA coast (confirmed against NOAA's
+ * own reference rendering for the same date, which clips to a real
+ * coastline and shows none of that overlap) — the land mask exists
+ * because GPU resampling alone (tried first) didn't fix it; even
+ * `raster-resampling: "nearest"` (no blending at all) still showed the
+ * same overlap, proving it was the cell's own square footprint at fault,
+ * not the resampling mode.
  */
 export function buildProbabilityRasterImage(grid: ProbabilityGrid): ProbabilityRasterImage {
-  const { rows, cols, bbox, resolutionDegrees: step } = grid;
+  const { rows, cols, bbox, resolutionDegrees: step, landMask } = grid;
   const [minLon, , , maxLat] = bbox;
-  const pixels = new Uint8ClampedArray(rows * cols * 4);
+  const factor = landMask.factor;
+  const superRows = rows * factor;
+  const superCols = cols * factor;
+  const maskBytes = base64ToBytes(landMask.data);
+  const pixels = new Uint8ClampedArray(superRows * superCols * 4);
 
+  // Iterates real cells (~15,270), not supersampled pixels (~1.2M at
+  // factor=6): an earlier draft looped over every supersampled pixel and
+  // did a Map lookup (with a freshly-allocated string key) per pixel, even
+  // though every cell's factor*factor sub-block shares one color —
+  // measured at 36ms/call. Looping cells first and filling each one's own
+  // sub-block directly (still checking the land mask per sub-pixel, so
+  // coastline trimming is unaffected) measured at 4.6ms/call for
+  // identical output — about 8x faster, and it no longer needs the
+  // intermediate Map at all.
   for (const cell of grid.cells) {
     // A non-finite probability (NaN/Infinity) must render exactly like a
     // missing cell — transparent — not fall through `colorForProbability`'s
@@ -83,15 +107,27 @@ export function buildProbabilityRasterImage(grid: ProbabilityGrid): ProbabilityR
     const col = Math.floor((cell.lon - minLon) / step);
     if (row < 0 || row >= rows || col < 0 || col >= cols) continue;
 
-    const [r, g, b] = colorForProbability(cell.probability);
-    const idx = (row * cols + col) * 4;
-    pixels[idx] = r;
-    pixels[idx + 1] = g;
-    pixels[idx + 2] = b;
-    pixels[idx + 3] = 255;
+    const [red, green, blue] = colorForProbability(cell.probability);
+    const superRowStart = row * factor;
+    const superColStart = col * factor;
+
+    for (let dr = 0; dr < factor; dr++) {
+      const r = superRowStart + dr;
+      for (let dc = 0; dc < factor; dc++) {
+        const c = superColStart + dc;
+        const superIndex = r * superCols + c;
+        if (bitAt(maskBytes, superIndex)) continue; // land — leave transparent
+
+        const idx = superIndex * 4;
+        pixels[idx] = red;
+        pixels[idx + 1] = green;
+        pixels[idx + 2] = blue;
+        pixels[idx + 3] = 255;
+      }
+    }
   }
 
-  return { width: cols, height: rows, pixels };
+  return { width: superCols, height: superRows, pixels };
 }
 
 /** The four corners MapLibre's `image` source coordinates need, derived from the grid's own bbox. */

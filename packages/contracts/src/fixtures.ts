@@ -41,6 +41,9 @@ export function buildProbabilityGrid(overrides: Partial<ProbabilityGrid> = {}): 
       publisherName: "NOAA WhaleWatch 2.0",
       publisherId: "noaa-whalewatch2",
     }),
+    // A single all-water bit (0x00) — matches the 1x1-cell default grid
+    // above; override both together if a test needs a denser grid.
+    landMask: { factor: 1, data: "AA==" },
     ...overrides,
   };
 }

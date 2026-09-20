@@ -1,4 +1,5 @@
 export * from "./bbox.js";
+export * from "./bitmask.js";
 export * from "./health.js";
 export * from "./species.js";
 export * from "./source.js";

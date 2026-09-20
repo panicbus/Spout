@@ -6,11 +6,10 @@ import { buildProbabilityRasterImage, imageCornersForBbox } from "./probabilityR
  * Real cells are never at a bbox edge — `packages/api/src/raster/rasterToCells.ts`
  * places every cell at its CENTER: `lat: ymax - (row + 0.5) * yres`,
  * `lon: xmin + (col + 0.5) * xres`. A fixture that instead puts cells
- * exactly on bbox corners (as an earlier version of this test file did)
- * can pass against a buggy `Math.round`-based row/col inversion purely by
- * coincidence (rounding 0 or 1 exactly), without ever exercising the real
- * "always exactly `row + 0.5`" case every production cell actually hits.
- * This helper reproduces the real convention so these tests catch that.
+ * exactly on bbox corners can pass against a buggy row/col inversion
+ * purely by coincidence — this helper reproduces the real convention so
+ * these tests actually catch that class of bug (as one already did once
+ * — see the `Math.floor` comment in `probabilityRaster.ts`).
  */
 function cellCenterFixture(row: number, col: number, rows: number, cols: number, bbox: [number, number, number, number], probability: number) {
   const [minLon, minLat, maxLon, maxLat] = bbox;
@@ -19,15 +18,37 @@ function cellCenterFixture(row: number, col: number, rows: number, cols: number,
   return { lat: maxLat - (row + 0.5) * yres, lon: minLon + (col + 0.5) * xres, probability };
 }
 
+/** An all-water land mask (every bit 0) sized for `rows*factor x cols*factor`. */
+function allWaterMask(rows: number, cols: number, factor: number) {
+  const bits = rows * factor * cols * factor;
+  const bytes = new Uint8Array(Math.ceil(bits / 8));
+  return { factor, data: Buffer.from(bytes).toString("base64") };
+}
+
+/** A land mask with exactly the given bit indices (into the `rows*factor x cols*factor` grid) set to land. */
+function maskWithLandBits(rows: number, cols: number, factor: number, landIndices: number[]) {
+  const bits = rows * factor * cols * factor;
+  const bytes = new Uint8Array(Math.ceil(bits / 8));
+  for (const i of landIndices) bytes[i >> 3]! |= 1 << (i & 7);
+  return { factor, data: Buffer.from(bytes).toString("base64") };
+}
+
 describe("buildProbabilityRasterImage", () => {
-  it("sizes the pixel buffer as width(cols) x height(rows) x 4 (RGBA)", () => {
-    const grid = buildProbabilityGrid({ rows: 2, cols: 2, resolutionDegrees: 1, bbox: [0, 0, 2, 2], cells: [] });
+  it("sizes the pixel buffer as (cols*factor) x (rows*factor) x 4 (RGBA)", () => {
+    const grid = buildProbabilityGrid({
+      rows: 2,
+      cols: 2,
+      resolutionDegrees: 1,
+      bbox: [0, 0, 2, 2],
+      cells: [],
+      landMask: allWaterMask(2, 2, 3),
+    });
 
     const image = buildProbabilityRasterImage(grid);
 
-    expect(image.width).toBe(2);
-    expect(image.height).toBe(2);
-    expect(image.pixels).toHaveLength(2 * 2 * 4);
+    expect(image.width).toBe(2 * 3);
+    expect(image.height).toBe(2 * 3);
+    expect(image.pixels).toHaveLength(2 * 3 * 2 * 3 * 4);
   });
 
   it("leaves nodata cells fully transparent (alpha 0), never fabricating a color for a real gap", () => {
@@ -38,34 +59,55 @@ describe("buildProbabilityRasterImage", () => {
       resolutionDegrees: 1,
       bbox,
       cells: [cellCenterFixture(0, 0, 2, 2, bbox, 1)], // only row 0, col 0 is real
+      landMask: allWaterMask(2, 2, 1),
     });
 
     const image = buildProbabilityRasterImage(grid);
 
-    // row 0, col 1: still nodata.
+    // row 0, col 1 (native, factor=1 so 1:1 with supersampled): still nodata.
     const topRightIdx = (0 * 2 + 1) * 4;
     expect(Array.from(image.pixels.slice(topRightIdx, topRightIdx + 4))).toEqual([0, 0, 0, 0]);
   });
 
-  it("places each real cell (at its true center coordinate, not a bbox edge) at its correct row/col pixel", () => {
-    const bbox: [number, number, number, number] = [0, 0, 2, 2];
+  it("duplicates a real cell's color across every supersampled sub-pixel (nearest-neighbor upsampling)", () => {
+    const bbox: [number, number, number, number] = [0, 0, 1, 1];
     const grid = buildProbabilityGrid({
-      rows: 2,
-      cols: 2,
+      rows: 1,
+      cols: 1,
       resolutionDegrees: 1,
       bbox,
-      cells: [
-        cellCenterFixture(0, 0, 2, 2, bbox, 0), // top-left
-        cellCenterFixture(1, 1, 2, 2, bbox, 1), // bottom-right
-      ],
+      cells: [cellCenterFixture(0, 0, 1, 1, bbox, 1)], // probability 1 -> red
+      landMask: allWaterMask(1, 1, 2),
     });
 
     const image = buildProbabilityRasterImage(grid);
 
-    const topLeftIdx = (0 * 2 + 0) * 4;
-    expect(Array.from(image.pixels.slice(topLeftIdx, topLeftIdx + 4))).toEqual([27, 20, 100, 255]); // probability 0
-    const bottomRightIdx = (1 * 2 + 1) * 4;
-    expect(Array.from(image.pixels.slice(bottomRightIdx, bottomRightIdx + 4))).toEqual([255, 0, 0, 255]); // probability 1
+    expect(image.width).toBe(2);
+    expect(image.height).toBe(2);
+    for (let i = 0; i < 4; i++) {
+      const idx = i * 4;
+      expect(Array.from(image.pixels.slice(idx, idx + 4))).toEqual([255, 0, 0, 255]);
+    }
+  });
+
+  it("trims individual supersampled sub-pixels to transparent where the land mask says land, even though the containing native cell has real data", () => {
+    const bbox: [number, number, number, number] = [0, 0, 1, 1];
+    const grid = buildProbabilityGrid({
+      rows: 1,
+      cols: 1,
+      resolutionDegrees: 1,
+      bbox,
+      cells: [cellCenterFixture(0, 0, 1, 1, bbox, 1)],
+      // 2x2 supersampled grid; mark only the top-left sub-pixel (index 0) as land.
+      landMask: maskWithLandBits(1, 1, 2, [0]),
+    });
+
+    const image = buildProbabilityRasterImage(grid);
+
+    expect(Array.from(image.pixels.slice(0, 4))).toEqual([0, 0, 0, 0]); // top-left: land, transparent
+    expect(Array.from(image.pixels.slice(4, 8))).toEqual([255, 0, 0, 255]); // top-right: water, colored
+    expect(Array.from(image.pixels.slice(8, 12))).toEqual([255, 0, 0, 255]); // bottom-left: water, colored
+    expect(Array.from(image.pixels.slice(12, 16))).toEqual([255, 0, 0, 255]); // bottom-right: water, colored
   });
 
   it("never drops the last row/column of real cells (regression: a naive Math.round of a center coordinate rounds row+0.5 UP to row+1, pushing the last row/col out of bounds)", () => {
@@ -77,16 +119,14 @@ describe("buildProbabilityRasterImage", () => {
       cols,
       resolutionDegrees: 1,
       bbox,
-      cells: [cellCenterFixture(rows - 1, cols - 1, rows, cols, bbox, 1)], // the real bottom-right-most cell
+      cells: [cellCenterFixture(rows - 1, cols - 1, rows, cols, bbox, 1)],
+      landMask: allWaterMask(rows, cols, 1),
     });
 
     const image = buildProbabilityRasterImage(grid);
 
     const bottomRightIdx = ((rows - 1) * cols + (cols - 1)) * 4;
     expect(Array.from(image.pixels.slice(bottomRightIdx, bottomRightIdx + 4))).toEqual([255, 0, 0, 255]);
-    // The total opaque-pixel count must be exactly 1 — a dropped/misplaced
-    // cell would either leave this pixel transparent or set some OTHER
-    // pixel instead.
     const opaqueCount = image.pixels.filter((_, i) => i % 4 === 3 && image.pixels[i] === 255).length;
     expect(opaqueCount).toBe(1);
   });
@@ -99,6 +139,7 @@ describe("buildProbabilityRasterImage", () => {
       resolutionDegrees: 1,
       bbox,
       cells: [cellCenterFixture(0, 0, 1, 1, bbox, 0.5)], // halfway between the 0.4 (cyan) and 0.6 (lime) stops
+      landMask: allWaterMask(1, 1, 1),
     });
 
     const image = buildProbabilityRasterImage(grid);
@@ -114,6 +155,7 @@ describe("buildProbabilityRasterImage", () => {
       resolutionDegrees: 1,
       bbox,
       cells: [cellCenterFixture(0, 0, 1, 1, bbox, NaN)],
+      landMask: allWaterMask(1, 1, 1),
     });
 
     const image = buildProbabilityRasterImage(grid);

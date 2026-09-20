@@ -9,6 +9,19 @@ const ProbabilityCellSchema = z.object({
 });
 
 /**
+ * A coastline mask, supersampled `factor`x beyond the grid's own
+ * `rows`/`cols` resolution — see `packages/api/src/raster/landMask.ts`'s
+ * doc comment for why the grid's native resolution alone isn't fine
+ * enough to trim a rendered cell to the true coastline. `data` is a
+ * base64-encoded, bit-packed (1 bit/cell, 1=land, row-major,
+ * `rows*factor` x `cols*factor`) `Uint8Array`.
+ */
+const LandMaskSchema = z.object({
+  factor: z.number().int().positive(),
+  data: z.string().min(1),
+});
+
+/**
  * WhaleWatch 2.0's ensemble model is blue-whale-only, so `species` is a
  * literal rather than the full `SpeciesSchema` enum — accepting anything
  * else would misrepresent what the model actually covers (ADR 0002).
@@ -39,6 +52,7 @@ export const ProbabilityGridSchema = z
      */
     cells: z.array(ProbabilityCellSchema),
     attribution: AttributionSchema,
+    landMask: LandMaskSchema,
   })
   .refine((grid) => grid.cells.length <= grid.rows * grid.cols, {
     message: "cells.length must not exceed rows * cols — indicates a corrupted raster decode",
@@ -46,3 +60,4 @@ export const ProbabilityGridSchema = z
   });
 export type ProbabilityGrid = z.infer<typeof ProbabilityGridSchema>;
 export type ProbabilityCell = z.infer<typeof ProbabilityCellSchema>;
+export type LandMask = z.infer<typeof LandMaskSchema>;

@@ -20,6 +20,7 @@ function validGrid(overrides: Partial<Record<string, unknown>> = {}) {
     resolutionDegrees: 0.1,
     cells: [{ lat: 36.5, lon: -122.1, probability: 0.42 }],
     attribution: validAttribution,
+    landMask: { factor: 6, data: "AA==" },
     ...overrides,
   };
 }
@@ -66,5 +67,22 @@ describe("ProbabilityGridSchema", () => {
       validGrid({ rows: 180, cols: 185, cells: sparseCells }),
     );
     expect(grid.cells).toHaveLength(15270);
+  });
+
+  it("requires a landMask — the client can't render a coastline-trimmed raster without one", () => {
+    const { landMask: _landMask, ...withoutLandMask } = validGrid();
+    expect(() => ProbabilityGridSchema.parse(withoutLandMask)).toThrow();
+  });
+
+  it("rejects a landMask with a non-positive factor", () => {
+    expect(() =>
+      ProbabilityGridSchema.parse(validGrid({ landMask: { factor: 0, data: "AA==" } })),
+    ).toThrow();
+  });
+
+  it("rejects a landMask with empty data", () => {
+    expect(() =>
+      ProbabilityGridSchema.parse(validGrid({ landMask: { factor: 6, data: "" } })),
+    ).toThrow();
   });
 });

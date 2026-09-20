@@ -1,5 +1,6 @@
 import { ProbabilityGridSchema, type Attribution, type ProbabilityGrid } from "@spout/contracts";
 import { z } from "zod";
+import { getLandMask } from "../raster/coastlineMask.js";
 import { parseGrdHeader } from "../raster/grd.js";
 import { decodeGri } from "../raster/gri.js";
 import { rasterToCells } from "../raster/rasterToCells.js";
@@ -125,5 +126,6 @@ export async function fetchLatestProbabilityGrid(
     resolutionDegrees: xres,
     cells,
     attribution: ATTRIBUTION,
+    landMask: getLandMask(header.bbox, header.rows, header.cols),
   });
 }
