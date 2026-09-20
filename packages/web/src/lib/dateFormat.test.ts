@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDateStamp } from "./dateFormat.js";
+import { formatDateStamp, formatObservedAt } from "./dateFormat.js";
 
 describe("formatDateStamp", () => {
   it("formats a bare YYYY-MM-DD date as a readable stamp", () => {
@@ -18,5 +18,24 @@ describe("formatDateStamp", () => {
     } finally {
       process.env.TZ = original;
     }
+  });
+});
+
+describe("formatObservedAt", () => {
+  it("formats a bare YYYY-MM-DD observedAt the same way formatDateStamp does (GBIF's shape)", () => {
+    expect(formatObservedAt("2026-08-06")).toBe(formatDateStamp("2026-08-06"));
+    expect(formatObservedAt("2026-08-06")).toBe("Aug 6, 2026");
+  });
+
+  it("does not crash on a full ISO datetime observedAt (iNaturalist's shape) — formatDateStamp alone would, since it appends its own 'T00:00:00Z' suffix to whatever string it's given", () => {
+    expect(() => formatObservedAt("2026-08-06T13:21:00.000Z")).not.toThrow();
+  });
+
+  it("formats a full ISO datetime observedAt as a readable date", () => {
+    expect(formatObservedAt("2026-08-06T13:21:00.000Z")).toBe("Aug 6, 2026");
+  });
+
+  it("formats a datetime observedAt with no explicit offset (a real, documented GBIF shape) without throwing", () => {
+    expect(() => formatObservedAt("2026-08-06T13:21")).not.toThrow();
   });
 });

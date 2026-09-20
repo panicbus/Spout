@@ -3,10 +3,12 @@ import { useState } from "react";
 import styles from "./App.module.css";
 import { ApiStatusIndicator } from "./components/ApiStatusIndicator.js";
 import { MapCanvas } from "./components/map/MapCanvas.js";
+import { DataCreditsPanel } from "./features/credits/DataCreditsPanel.js";
 import { FilterBar } from "./features/filters/FilterBar.js";
 import { ProbabilityLayer } from "./features/probability/ProbabilityLayer.js";
 import { RecencyStamp } from "./features/sightings/RecencyStamp.js";
 import { SightingsLayer } from "./features/sightings/SightingsLayer.js";
+import { ProbabilityGridProvider } from "./lib/ProbabilityGridProvider.js";
 
 /** ADR 0003: the sightings layer defaults to the last 30 days, never all-time. */
 const DEFAULT_WINDOW: TimeWindow = "30d";
@@ -15,14 +17,17 @@ export function App() {
   const [timeWindow, setTimeWindow] = useState<TimeWindow>(DEFAULT_WINDOW);
 
   return (
-    <div className={styles.app}>
-      <MapCanvas>
-        <ProbabilityLayer />
-        <SightingsLayer timeWindow={timeWindow} />
-      </MapCanvas>
-      <FilterBar value={timeWindow} onChange={setTimeWindow} />
-      <RecencyStamp />
-      <ApiStatusIndicator />
-    </div>
+    <ProbabilityGridProvider>
+      <div className={styles.app}>
+        <MapCanvas>
+          <ProbabilityLayer />
+          <SightingsLayer timeWindow={timeWindow} />
+        </MapCanvas>
+        <FilterBar value={timeWindow} onChange={setTimeWindow} />
+        <RecencyStamp />
+        <ApiStatusIndicator />
+        <DataCreditsPanel />
+      </div>
+    </ProbabilityGridProvider>
   );
 }

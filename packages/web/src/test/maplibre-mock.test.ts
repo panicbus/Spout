@@ -54,4 +54,41 @@ describe("MapMock event semantics", () => {
 
     expect(cb).not.toHaveBeenCalled();
   });
+
+  it("on(event, layerId, cb) registers a layer-scoped listener, fired only by triggerLayerEvent for that exact layer", () => {
+    const cb = vi.fn();
+    map.on("click", "sightings-points", cb);
+
+    map.triggerLayerEvent("click", "sightings-points", { lngLat: [1, 2] });
+
+    expect(cb).toHaveBeenCalledWith({ lngLat: [1, 2] });
+  });
+
+  it("a layer-scoped listener does NOT fire from a plain trigger(event, ...) call", () => {
+    const cb = vi.fn();
+    map.on("click", "sightings-points", cb);
+
+    map.trigger("click");
+
+    expect(cb).not.toHaveBeenCalled();
+  });
+
+  it("a layer-scoped listener does NOT fire for a different layer's triggerLayerEvent", () => {
+    const cb = vi.fn();
+    map.on("click", "sightings-points", cb);
+
+    map.triggerLayerEvent("click", "probability-cells", {});
+
+    expect(cb).not.toHaveBeenCalled();
+  });
+
+  it("off(event, layerId, cb) cancels a layer-scoped registration", () => {
+    const cb = vi.fn();
+    map.on("click", "sightings-points", cb);
+
+    map.off("click", "sightings-points", cb);
+    map.triggerLayerEvent("click", "sightings-points", {});
+
+    expect(cb).not.toHaveBeenCalled();
+  });
 });

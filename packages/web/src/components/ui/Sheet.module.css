@@ -1,0 +1,40 @@
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.sheet {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  max-height: 70%;
+  overflow-y: auto;
+  background: white;
+  border-radius: 12px 12px 0 0;
+  padding: 1.25rem;
+  box-sizing: border-box;
+  box-shadow: 0 -2px 16px rgba(0, 0, 0, 0.2);
+}
+
+.closeButton {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.75rem;
+  border: none;
+  background: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  color: #555;
+  padding: 0.25rem;
+}
+
+.title {
+  margin: 0 1.5rem 0.75rem 0;
+  font-size: 1.1rem;
+}

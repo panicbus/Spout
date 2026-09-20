@@ -19,7 +19,8 @@ import { vi } from "vitest";
  */
 
 type Listener = (...args: unknown[]) => void;
-type EventBinder = (event: string, cb: Listener) => unknown;
+/** Real maplibre-gl's `on`/`once`/`off` overload for a layer-scoped event (e.g. `map.on("click", "my-layer", handler)`), alongside the plain whole-map form. */
+type EventBinder = (event: string, layerIdOrCb: string | Listener, cb?: Listener) => unknown;
 
 export interface MapInstanceMock {
   options: Record<string, unknown>;
@@ -35,8 +36,10 @@ export interface MapInstanceMock {
   once: ReturnType<typeof vi.fn<EventBinder>>;
   off: ReturnType<typeof vi.fn<EventBinder>>;
   loaded: ReturnType<typeof vi.fn>;
-  /** Test-only: invokes every callback registered for `event`, as the real event would. */
+  /** Test-only: invokes every whole-map (non-layer-scoped) callback registered for `event`, as the real event would. */
   trigger: (event: string, ...args: unknown[]) => void;
+  /** Test-only: invokes every callback registered for `event` scoped to exactly `layerId`, as a real feature click/hover event would. */
+  triggerLayerEvent: (event: string, layerId: string, ...args: unknown[]) => void;
 }
 
 export const mapInstances: MapInstanceMock[] = [];
@@ -66,30 +69,49 @@ class MapMock implements MapInstanceMock {
 
   loaded: ReturnType<typeof vi.fn> = vi.fn(() => this.isLoaded);
 
-  on: ReturnType<typeof vi.fn<EventBinder>> = vi.fn<EventBinder>((event, cb) => {
-    if (!this.listeners.has(event)) this.listeners.set(event, new Set());
-    this.listeners.get(event)?.add(cb);
+  /** `on(event, cb)` and `on(event, layerId, cb)` both key into the same registry — a layer-scoped registration just uses `"${event}:${layerId}"` as the key instead of bare `event`, so it can never collide with (or be fired by) a whole-map listener for the same event name. */
+  private static key(event: string, layerId?: string): string {
+    return layerId === undefined ? event : `${event}:${layerId}`;
+  }
+
+  on: ReturnType<typeof vi.fn<EventBinder>> = vi.fn<EventBinder>((event, layerIdOrCb, maybeCb) => {
+    const isLayerScoped = typeof layerIdOrCb === "string";
+    const key = MapMock.key(event, isLayerScoped ? layerIdOrCb : undefined);
+    const cb = (isLayerScoped ? maybeCb : layerIdOrCb) as Listener;
+    if (!this.listeners.has(key)) this.listeners.set(key, new Set());
+    this.listeners.get(key)?.add(cb);
     return this;
   });
 
-  once: ReturnType<typeof vi.fn<EventBinder>> = vi.fn<EventBinder>((event, cb) => {
+  once: ReturnType<typeof vi.fn<EventBinder>> = vi.fn<EventBinder>((event, layerIdOrCb, maybeCb) => {
+    const isLayerScoped = typeof layerIdOrCb === "string";
+    const key = MapMock.key(event, isLayerScoped ? layerIdOrCb : undefined);
+    const cb = (isLayerScoped ? maybeCb : layerIdOrCb) as Listener;
     const wrapped: Listener = (...args) => {
-      this.off(event, cb);
+      if (isLayerScoped) {
+        this.off(event, layerIdOrCb, cb);
+      } else {
+        this.off(event, cb);
+      }
       cb(...args);
     };
-    if (!this.onceWrappers.has(event)) this.onceWrappers.set(event, new Map());
-    this.onceWrappers.get(event)?.set(cb, wrapped);
-    this.on(event, wrapped);
+    if (!this.onceWrappers.has(key)) this.onceWrappers.set(key, new Map());
+    this.onceWrappers.get(key)?.set(cb, wrapped);
+    if (!this.listeners.has(key)) this.listeners.set(key, new Set());
+    this.listeners.get(key)?.add(wrapped);
     return this;
   });
 
-  off: ReturnType<typeof vi.fn<EventBinder>> = vi.fn<EventBinder>((event, cb) => {
-    const wrapper = this.onceWrappers.get(event)?.get(cb);
+  off: ReturnType<typeof vi.fn<EventBinder>> = vi.fn<EventBinder>((event, layerIdOrCb, maybeCb) => {
+    const isLayerScoped = typeof layerIdOrCb === "string";
+    const key = MapMock.key(event, isLayerScoped ? layerIdOrCb : undefined);
+    const cb = (isLayerScoped ? maybeCb : layerIdOrCb) as Listener;
+    const wrapper = this.onceWrappers.get(key)?.get(cb);
     if (wrapper) {
-      this.listeners.get(event)?.delete(wrapper);
-      this.onceWrappers.get(event)?.delete(cb);
+      this.listeners.get(key)?.delete(wrapper);
+      this.onceWrappers.get(key)?.delete(cb);
     } else {
-      this.listeners.get(event)?.delete(cb);
+      this.listeners.get(key)?.delete(cb);
     }
     return this;
   });
@@ -97,6 +119,10 @@ class MapMock implements MapInstanceMock {
   trigger = (event: string, ...args: unknown[]): void => {
     if (event === "load") this.isLoaded = true;
     for (const cb of [...(this.listeners.get(event) ?? [])]) cb(...args);
+  };
+
+  triggerLayerEvent = (event: string, layerId: string, ...args: unknown[]): void => {
+    for (const cb of [...(this.listeners.get(MapMock.key(event, layerId)) ?? [])]) cb(...args);
   };
 
   constructor(options: Record<string, unknown>) {

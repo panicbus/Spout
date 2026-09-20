@@ -1,4 +1,4 @@
-import { render, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { buildSighting } from "@spout/contracts/fixtures.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TimeWindow } from "@spout/contracts";
@@ -280,5 +280,93 @@ describe("SightingsLayer", () => {
     // existing source's data in place.
     expect(map.removeLayer).not.toHaveBeenCalled();
     expect(map.removeSource).not.toHaveBeenCalled();
+  });
+
+  it("opens PinDetailCard with the tapped sighting's full data when a points-layer feature is clicked", async () => {
+    const sighting = buildSighting({ id: "gbif:42", species: "orca" });
+    vi.mocked(apiClient.fetchSightings).mockResolvedValue([sighting]);
+
+    render(
+      <MapCanvas>
+        <SightingsLayer timeWindow="30d" />
+      </MapCanvas>,
+    );
+    const map = mapInstances[0]!;
+    await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
+    map.trigger("load");
+    await waitFor(() => expect(map.addSource).toHaveBeenCalled());
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    map.triggerLayerEvent("click", SIGHTINGS_POINTS_LAYER_ID, {
+      features: [{ properties: { id: "gbif:42" } }],
+    });
+
+    await waitFor(() => expect(screen.getByRole("dialog")).toHaveAccessibleName("Orca"));
+  });
+
+  it("still opens PinDetailCard for a still-visible pin while a refetch triggered by a FilterBar change is in flight (antagonist finding: a click handler gated on the fetch's own 'ok' state silently no-ops against pins useMapLayerLifecycle deliberately leaves on screen mid-refetch)", async () => {
+    const sighting = buildSighting({ id: "gbif:42", species: "orca" });
+    let resolveSecondFetch!: (sightings: ReturnType<typeof buildSighting>[]) => void;
+    vi.mocked(apiClient.fetchSightings)
+      .mockResolvedValueOnce([sighting])
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveSecondFetch = resolve;
+        }),
+      );
+
+    const { rerender } = render(
+      <MapCanvas>
+        <SightingsLayer timeWindow="30d" />
+      </MapCanvas>,
+    );
+    const map = mapInstances[0]!;
+    await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
+    map.trigger("load");
+    await waitFor(() => expect(map.addSource).toHaveBeenCalledTimes(1));
+    map.getSource.mockReturnValue({ setData: vi.fn() });
+
+    // Simulate a FilterBar click: the window prop changes, kicking off a
+    // new (still-pending) fetch — the old pins, including "gbif:42",
+    // stay on screen and clickable per useMapLayerLifecycle's design.
+    rerender(
+      <MapCanvas>
+        <SightingsLayer timeWindow={"90d" as TimeWindow} />
+      </MapCanvas>,
+    );
+
+    map.triggerLayerEvent("click", SIGHTINGS_POINTS_LAYER_ID, {
+      features: [{ properties: { id: "gbif:42" } }],
+    });
+
+    await waitFor(() => expect(screen.getByRole("dialog")).toHaveAccessibleName("Orca"));
+
+    resolveSecondFetch([sighting]);
+    await waitFor(() => expect(apiClient.fetchSightings).toHaveBeenCalledWith({ window: "90d" }));
+  });
+
+  it("closes PinDetailCard when dismissed", async () => {
+    const sighting = buildSighting({ id: "gbif:42" });
+    vi.mocked(apiClient.fetchSightings).mockResolvedValue([sighting]);
+
+    render(
+      <MapCanvas>
+        <SightingsLayer timeWindow="30d" />
+      </MapCanvas>,
+    );
+    const map = mapInstances[0]!;
+    await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
+    map.trigger("load");
+    await waitFor(() => expect(map.addSource).toHaveBeenCalled());
+
+    map.triggerLayerEvent("click", SIGHTINGS_POINTS_LAYER_ID, {
+      features: [{ properties: { id: "gbif:42" } }],
+    });
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /close/i }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

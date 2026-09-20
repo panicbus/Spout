@@ -3,6 +3,7 @@ import { buildProbabilityGrid } from "@spout/contracts/fixtures.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MapCanvas } from "../../components/map/MapCanvas.js";
 import * as apiClient from "../../lib/apiClient.js";
+import { ProbabilityGridProvider } from "../../lib/ProbabilityGridProvider.js";
 import { mapInstances, resetMaplibreMock } from "../../test/maplibre-mock.js";
 import { PROBABILITY_LAYER_ID, PROBABILITY_SOURCE_ID, ProbabilityLayer } from "./ProbabilityLayer.js";
 
@@ -25,9 +26,11 @@ describe("ProbabilityLayer", () => {
     vi.mocked(apiClient.fetchProbabilityGrid).mockResolvedValue(fakeGrid("2026-09-15"));
 
     render(
-      <MapCanvas>
-        <ProbabilityLayer />
-      </MapCanvas>,
+      <ProbabilityGridProvider>
+        <MapCanvas>
+          <ProbabilityLayer />
+        </MapCanvas>
+      </ProbabilityGridProvider>,
     );
     const map = mapInstances[0]!;
     // Wait for the grid fetch to resolve AND the effect that registers
@@ -56,9 +59,11 @@ describe("ProbabilityLayer", () => {
     vi.mocked(apiClient.fetchProbabilityGrid).mockResolvedValue(fakeGrid("2026-09-15"));
 
     render(
-      <MapCanvas>
-        <ProbabilityLayer />
-      </MapCanvas>,
+      <ProbabilityGridProvider>
+        <MapCanvas>
+          <ProbabilityLayer />
+        </MapCanvas>
+      </ProbabilityGridProvider>,
     );
     mapInstances[0]!.trigger("load");
 
@@ -70,9 +75,11 @@ describe("ProbabilityLayer", () => {
     const updateImage = vi.fn();
 
     render(
-      <MapCanvas>
-        <ProbabilityLayer />
-      </MapCanvas>,
+      <ProbabilityGridProvider>
+        <MapCanvas>
+          <ProbabilityLayer />
+        </MapCanvas>
+      </ProbabilityGridProvider>,
     );
     const map = mapInstances[0]!;
     await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
@@ -89,9 +96,11 @@ describe("ProbabilityLayer", () => {
     vi.mocked(apiClient.fetchProbabilityGrid).mockResolvedValue(fakeGrid("2026-09-15"));
 
     const { unmount } = render(
-      <MapCanvas>
-        <ProbabilityLayer />
-      </MapCanvas>,
+      <ProbabilityGridProvider>
+        <MapCanvas>
+          <ProbabilityLayer />
+        </MapCanvas>
+      </ProbabilityGridProvider>,
     );
     const map = mapInstances[0]!;
     await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
@@ -109,9 +118,11 @@ describe("ProbabilityLayer", () => {
     vi.mocked(apiClient.fetchProbabilityGrid).mockResolvedValue(fakeGrid("2026-09-15"));
 
     render(
-      <MapCanvas>
-        <ProbabilityLayer />
-      </MapCanvas>,
+      <ProbabilityGridProvider>
+        <MapCanvas>
+          <ProbabilityLayer />
+        </MapCanvas>
+      </ProbabilityGridProvider>,
     );
 
     await waitFor(() => expect(screen.getByText(/Sep 15, 2026/)).toBeInTheDocument());
@@ -121,9 +132,11 @@ describe("ProbabilityLayer", () => {
     vi.mocked(apiClient.fetchProbabilityGrid).mockResolvedValue(fakeGrid("2026-09-15"));
 
     render(
-      <MapCanvas>
-        <ProbabilityLayer />
-      </MapCanvas>,
+      <ProbabilityGridProvider>
+        <MapCanvas>
+          <ProbabilityLayer />
+        </MapCanvas>
+      </ProbabilityGridProvider>,
     );
 
     await waitFor(() => expect(screen.getByText(/NOAA WhaleWatch 2.0/)).toBeInTheDocument());
@@ -133,9 +146,11 @@ describe("ProbabilityLayer", () => {
     vi.mocked(apiClient.fetchProbabilityGrid).mockReturnValue(new Promise(() => {}));
 
     render(
-      <MapCanvas>
-        <ProbabilityLayer />
-      </MapCanvas>,
+      <ProbabilityGridProvider>
+        <MapCanvas>
+          <ProbabilityLayer />
+        </MapCanvas>
+      </ProbabilityGridProvider>,
     );
 
     expect(screen.queryByText(/probability/i)).not.toBeInTheDocument();

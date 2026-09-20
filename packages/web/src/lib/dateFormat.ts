@@ -18,3 +18,33 @@ export function formatDateStamp(isoDate: string): string {
     timeZone: "UTC",
   }).format(date);
 }
+
+const BARE_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Formats a `Sighting.observedAt` value, which — unlike `modelDate` — is
+ * NOT always a bare `YYYY-MM-DD`: GBIF's `eventDate` can be one, but
+ * iNaturalist and some GBIF records carry a full ISO datetime, sometimes
+ * with an explicit `Z`/offset and sometimes without (see
+ * `sightingsDb.ts`'s comment on GBIF's timezone-naive `eventDate`).
+ * `formatDateStamp` assumes a bare date and appends its own `T00:00:00Z`
+ * suffix — calling it directly on a value that already has a time
+ * component would produce a doubled, unparseable string (`"...T13:21T00:
+ * 00:00Z"`). This checks the shape first and only reuses
+ * `formatDateStamp`'s UTC-forcing behavior for the bare-date case, where
+ * the exact same negative-UTC-offset bug it exists to avoid applies
+ * equally; a datetime value is formatted directly (accepting the same
+ * timezone-naive imprecision already documented and accepted elsewhere
+ * in this project for GBIF's offset-less timestamps — not solvable here
+ * without knowing the true source timezone).
+ */
+export function formatObservedAt(observedAt: string): string {
+  if (BARE_DATE_PATTERN.test(observedAt)) return formatDateStamp(observedAt);
+
+  const date = new Date(observedAt);
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+}

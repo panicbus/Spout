@@ -4,9 +4,9 @@ import { useImageMapLayer } from "../../components/map/useImageMapLayer.js";
 import { useMap } from "../../components/map/MapContext.js";
 import { Stamp } from "../../components/ui/Stamp.js";
 import { formatDateStamp } from "../../lib/dateFormat.js";
+import { useProbabilityGrid } from "../../lib/ProbabilityGridContext.js";
 import { buildProbabilityRasterImage, imageCornersForBbox } from "../../lib/probabilityRaster.js";
 import { rasterImageToDataUrl } from "../../lib/rasterImageToDataUrl.js";
-import { useProbabilityGrid } from "../../lib/useProbabilityGrid.js";
 import styles from "./ProbabilityLayer.module.css";
 
 export const PROBABILITY_SOURCE_ID = "probability-grid";

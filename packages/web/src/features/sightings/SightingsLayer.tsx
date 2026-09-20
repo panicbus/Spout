@@ -1,9 +1,12 @@
-import type { AddLayerObject } from "maplibre-gl";
-import type { TimeWindow } from "@spout/contracts";
+import type { AddLayerObject, MapGeoJSONFeature } from "maplibre-gl";
+import type { Sighting, TimeWindow } from "@spout/contracts";
+import { useCallback, useState } from "react";
 import { useMap } from "../../components/map/MapContext.js";
 import { useGeoJsonMapLayer } from "../../components/map/useGeoJsonMapLayer.js";
+import { useLayerClick } from "../../components/map/useLayerClick.js";
 import { sightingsToGeoJson } from "../../lib/sightingsGeoJson.js";
 import { useSightings } from "../../lib/useSightings.js";
+import { PinDetailCard } from "./PinDetailCard.js";
 import { AGE_OPACITY, UNVERIFIED_OPACITY, VERIFIED_MIN_OPACITY, VERIFIED_OPACITY } from "./pinOpacity.js";
 
 export const SIGHTINGS_SOURCE_ID = "sightings";
@@ -144,8 +147,7 @@ const pointsLayer: AddLayerObject = {
  *
  * Deliberately does not fetch by map viewport bbox yet — the API already
  * scopes ingestion to the California coast bbox, so an unfiltered fetch
- * is the whole dataset for v1's geographic scope. Tap-to-detail is R4
- * scope (`PinDetailCard`), not built here.
+ * is the whole dataset for v1's geographic scope.
  */
 export interface SightingsLayerProps {
   timeWindow: TimeWindow;
@@ -154,6 +156,8 @@ export interface SightingsLayerProps {
 export function SightingsLayer({ timeWindow }: SightingsLayerProps) {
   const map = useMap();
   const result = useSightings({ window: timeWindow });
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [lastData, setLastData] = useState<Sighting[]>([]);
 
   useGeoJsonMapLayer(map, result, sightingsToGeoJson, {
     sourceId: SIGHTINGS_SOURCE_ID,
@@ -161,5 +165,36 @@ export function SightingsLayer({ timeWindow }: SightingsLayerProps) {
     sourceOptions: { cluster: true, clusterMaxZoom: 14, clusterRadius: 50 },
   });
 
-  return null;
+  // `useMapLayerLifecycle` deliberately leaves the previously-rendered
+  // pins on screen (and clickable) for the full duration of a refetch —
+  // see its own doc comment. Resolving `selectedId` against the last
+  // successfully-fetched data (kept in sync with what's actually
+  // painted, not with the in-flight fetch's own state) rather than
+  // against `result` directly means a click still resolves correctly
+  // mid-refetch, AND a selection that's fallen out of a newly-arrived
+  // result (e.g. the user narrowed the time window past it) naturally
+  // stops resolving to a sighting on the next render — no separate
+  // "clear it" effect needed. Adjusted during render (React's own
+  // "storing info from previous renders" pattern), not in an effect —
+  // an effect that calls setState synchronously would cost an extra,
+  // avoidable commit for something that's really just derived state.
+  if (result.state === "ok" && result.data !== lastData) {
+    setLastData(result.data);
+  }
+
+  // The tapped feature only carries what sightingsToGeoJson put in its
+  // properties (id/species/tier/verification/coordinatesObscured/
+  // ageBucket, not license/citation/positional uncertainty) — looking the
+  // full Sighting up by id from the already-fetched result, rather than
+  // widening the GeoJSON properties, keeps that conversion focused on
+  // exactly what paint expressions need (see its own doc comment).
+  const handleFeatureClick = useCallback((feature: MapGeoJSONFeature) => {
+    setSelectedId((feature.properties?.id as string | undefined) ?? null);
+  }, []);
+
+  useLayerClick(map, SIGHTINGS_POINTS_LAYER_ID, handleFeatureClick);
+
+  const selected = selectedId ? (lastData.find((sighting) => sighting.id === selectedId) ?? null) : null;
+
+  return <PinDetailCard sighting={selected} onClose={() => setSelectedId(null)} />;
 }
