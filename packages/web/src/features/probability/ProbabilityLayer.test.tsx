@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MapCanvas } from "../../components/map/MapCanvas.js";
 import * as apiClient from "../../lib/apiClient.js";
 import { ProbabilityGridProvider } from "../../lib/ProbabilityGridProvider.js";
+import { SIGHTINGS_CLUSTERS_LAYER_ID } from "../sightings/SightingsLayer.js";
 import { mapInstances, resetMaplibreMock } from "../../test/maplibre-mock.js";
 import { PROBABILITY_LAYER_ID, PROBABILITY_SOURCE_ID, ProbabilityLayer } from "./ProbabilityLayer.js";
 
@@ -140,6 +141,29 @@ describe("ProbabilityLayer", () => {
     );
 
     await waitFor(() => expect(screen.getByText(/NOAA WhaleWatch 2.0/)).toBeInTheDocument());
+  });
+
+  it("inserts the probability layer below the sightings layer when sightings already loaded first (never lets the raster bury the pins, regardless of which fetch resolves first)", async () => {
+    vi.mocked(apiClient.fetchProbabilityGrid).mockResolvedValue(fakeGrid("2026-09-15"));
+
+    render(
+      <ProbabilityGridProvider>
+        <MapCanvas>
+          <ProbabilityLayer />
+        </MapCanvas>
+      </ProbabilityGridProvider>,
+    );
+    const map = mapInstances[0]!;
+    await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
+    // Simulate SightingsLayer's own layer already being on the map by the
+    // time ProbabilityLayer's fetch resolves.
+    map.getLayer.mockReturnValue({ id: SIGHTINGS_CLUSTERS_LAYER_ID });
+    map.trigger("load");
+
+    expect(map.addLayer).toHaveBeenCalledWith(
+      expect.objectContaining({ id: PROBABILITY_LAYER_ID }),
+      SIGHTINGS_CLUSTERS_LAYER_ID,
+    );
   });
 
   it("renders no stamp while the grid is still loading", () => {

@@ -20,16 +20,16 @@ function toImage(data: { url: string }) {
   return { url: data.url, coordinates: COORDINATES };
 }
 
-function Harness({ result }: { result: FetchState<{ url: string }> }) {
+function Harness({ result, beforeId }: { result: FetchState<{ url: string }>; beforeId?: string }) {
   const map = useMap();
-  useImageMapLayer(map, result, toImage, { sourceId: SOURCE_ID, layers: [RASTER_LAYER] });
+  useImageMapLayer(map, result, toImage, { sourceId: SOURCE_ID, layers: [RASTER_LAYER], beforeId });
   return null;
 }
 
-function renderHarness(result: FetchState<{ url: string }>) {
+function renderHarness(result: FetchState<{ url: string }>, beforeId?: string) {
   return render(
     <MapCanvas>
-      <Harness result={result} />
+      <Harness result={result} beforeId={beforeId} />
     </MapCanvas>,
   );
 }
@@ -89,5 +89,27 @@ describe("useImageMapLayer", () => {
     map.trigger("load");
 
     expect(map.addSource).not.toHaveBeenCalled();
+  });
+
+  it("inserts the layer below beforeId when that layer already exists on the map", async () => {
+    renderHarness({ state: "ok", data: { url: "data:image/png;base64,abc" } }, "already-there-layer");
+    const map = mapInstances[0]!;
+    await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
+    map.getLayer.mockReturnValue({ id: "already-there-layer" });
+
+    map.trigger("load");
+
+    expect(map.addLayer).toHaveBeenCalledWith(RASTER_LAYER, "already-there-layer");
+  });
+
+  it("falls back to adding on top when beforeId doesn't exist on the map yet (never passes a beforeId MapLibre would reject)", async () => {
+    renderHarness({ state: "ok", data: { url: "data:image/png;base64,abc" } }, "not-there-yet-layer");
+    const map = mapInstances[0]!;
+    await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
+    map.getLayer.mockReturnValue(undefined);
+
+    map.trigger("load");
+
+    expect(map.addLayer).toHaveBeenCalledWith(RASTER_LAYER);
   });
 });

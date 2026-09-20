@@ -7,6 +7,7 @@ import { formatDateStamp } from "../../lib/dateFormat.js";
 import { useProbabilityGrid } from "../../lib/ProbabilityGridContext.js";
 import { buildProbabilityRasterImage, imageCornersForBbox } from "../../lib/probabilityRaster.js";
 import { rasterImageToDataUrl } from "../../lib/rasterImageToDataUrl.js";
+import { SIGHTINGS_CLUSTERS_LAYER_ID } from "../sightings/SightingsLayer.js";
 import styles from "./ProbabilityLayer.module.css";
 
 export const PROBABILITY_SOURCE_ID = "probability-grid";
@@ -84,9 +85,15 @@ export function ProbabilityLayer() {
   const map = useMap();
   const result = useProbabilityGrid();
 
+  // Sighting pins must always render above (and stay clickable over) the
+  // probability raster — without an explicit beforeId, stacking order
+  // depends on which layer's independent async fetch happens to resolve
+  // first, which let the raster land on top and bury the pins. See
+  // useImageMapLayer's beforeId doc comment.
   useImageMapLayer(map, result, toImageSource, {
     sourceId: PROBABILITY_SOURCE_ID,
     layers: [probabilityRasterLayer],
+    beforeId: SIGHTINGS_CLUSTERS_LAYER_ID,
   });
 
   if (result.state !== "ok") return null;
