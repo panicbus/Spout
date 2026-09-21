@@ -7,7 +7,16 @@
 
 .photo {
   width: 100%;
-  max-height: 160px;
+  /* A definite height, not max-height: an <img> with no known intrinsic
+     size (before its data has actually arrived) lays out at ~0 height,
+     so usePanCardIntoView's measurement — which runs as soon as the
+     card mounts, not after every image on it has loaded — was sizing
+     the card without this box's real footprint, then the image arriving
+     a moment later pushed everything below it down (and the top of the
+     card further up) with nothing re-checking the pan afterward. A
+     fixed height reserves the real space immediately, independent of
+     when the photo itself finishes loading. */
+  height: 160px;
   object-fit: cover;
   border-radius: 8px;
   margin: -0.1rem 0 0.1rem;
