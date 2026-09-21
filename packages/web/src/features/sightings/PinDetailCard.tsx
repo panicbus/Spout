@@ -134,13 +134,17 @@ export const PinDetailCard = forwardRef<HTMLDivElement, PinDetailCardProps>(func
           <div className={styles.attribution}>
             <p>
               {sighting.attribution.datasetName} via {sighting.attribution.publisherName}
+              {sighting.attribution.attributionUrl && (
+                <>
+                  {" ("}
+                  <a href={sighting.attribution.attributionUrl} target="_blank" rel="noopener noreferrer">
+                    view original
+                  </a>
+                  {")"}
+                </>
+              )}
             </p>
             {sighting.attribution.citation && <p className={styles.citation}>{sighting.attribution.citation}</p>}
-            {sighting.attribution.attributionUrl && (
-              <a href={sighting.attribution.attributionUrl} target="_blank" rel="noopener noreferrer">
-                View original observation
-              </a>
-            )}
           </div>
 
           <p className={styles.license}>

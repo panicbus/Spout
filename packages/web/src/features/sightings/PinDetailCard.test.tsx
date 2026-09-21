@@ -236,7 +236,7 @@ describe("PinDetailCard", () => {
     expect(licenseLine).not.toBe(attributionLine);
   });
 
-  it("shows a link to the original observation when attributionUrl is present", () => {
+  it("shows a 'view original' link inline with the dataset/publisher line when attributionUrl is present", () => {
     render(
       <PinDetailCard
         sighting={buildSighting({
@@ -253,7 +253,8 @@ describe("PinDetailCard", () => {
         onClose={() => {}}
       />,
     );
-    expect(screen.getByRole("link", { name: /view original observation/i })).toHaveAttribute(
+    expect(screen.getByText(/Test Dataset via Test Publisher \(/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "view original" })).toHaveAttribute(
       "href",
       "https://example.com/observation/1",
     );

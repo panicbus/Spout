@@ -21,7 +21,7 @@
 
 .speciesIcon {
   display: block;
-  height: 24px;
+  height: 29px;
   width: auto;
   flex: none;
 }
@@ -29,7 +29,7 @@
 .title {
   margin: 0;
   padding-right: 1.5rem;
-  font-size: 1.05rem;
+  font-size: 1.2rem;
   white-space: nowrap;
 }
 
@@ -51,8 +51,10 @@
 }
 
 .attribution {
-  margin-top: 0.5rem;
-  padding-top: 0.6rem;
+  /* No margin-top of its own — `.content`'s flex `gap` already spaces it
+     from the previous element; adding one on top of that gap was the
+     extra whitespace above this section. */
+  padding-top: 0.35rem;
   border-top: 1px solid #eee;
   display: flex;
   flex-direction: column;
