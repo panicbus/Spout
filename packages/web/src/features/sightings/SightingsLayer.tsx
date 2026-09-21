@@ -7,6 +7,7 @@ import { useGeoJsonMapLayer } from "../../components/map/useGeoJsonMapLayer.js";
 import { usePanCardIntoView } from "../../components/map/usePanCardIntoView.js";
 import { useProjectedPoint } from "../../components/map/useProjectedPoint.js";
 import { sightingsToGeoJson } from "../../lib/sightingsGeoJson.js";
+import { useNow } from "../../lib/useNow.js";
 import { useSightings } from "../../lib/useSightings.js";
 import { PinDetailCard } from "./PinDetailCard.js";
 import { AGE_OPACITY, UNVERIFIED_OPACITY, VERIFIED_MIN_OPACITY, VERIFIED_OPACITY } from "./pinOpacity.js";
@@ -194,6 +195,26 @@ export function SightingsLayer({ timeWindow }: SightingsLayerProps) {
   if (result.state === "ok" && result.data !== lastData) {
     setLastData(result.data);
   }
+
+  // `sightingsToGeoJson` bakes each pin's `ageBucket` into its GeoJSON
+  // properties once, at conversion time — `useGeoJsonMapLayer`'s own
+  // lifecycle (above) only re-runs that conversion when `lastData` itself
+  // changes (a refetch), so without this, a pin's age-based fade
+  // (`pointsLayer`'s `circle-opacity`) would silently freeze at whatever
+  // it was the moment its data last arrived, even as real time passes in
+  // a long-open tab. Re-pushes freshly-recomputed GeoJSON straight to the
+  // already-added source on every `useNow` tick — deliberately bypassing
+  // `useGeoJsonMapLayer`'s add-vs-update branching (there's nothing to
+  // add; the source already exists by the time this can matter) rather
+  // than threading `now` through that shared hook's identity-based
+  // re-apply gate.
+  const now = useNow();
+  useEffect(() => {
+    if (!map) return;
+    const source = map.getSource(SIGHTINGS_SOURCE_ID) as GeoJSONSource | undefined;
+    if (!source) return;
+    source.setData(sightingsToGeoJson(lastData, now));
+  }, [map, lastData, now]);
 
   // One whole-map click handler, not per-layer listeners: a tap can hit
   // an individual point (open its detail card), a cluster (zoom in to

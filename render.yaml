@@ -1,0 +1,38 @@
+# Render Blueprint for the Spout API (packages/api). Deploy by connecting
+# this repo in the Render dashboard and choosing "New > Blueprint" — Render
+# reads this file automatically from the repo root.
+#
+# The frontend (packages/web) is NOT deployed from this file — it's a
+# static Vite build, deployed separately on Vercel (see vercel.json), which
+# is also where the vanity domain gets attached. Only the API needs a real
+# always-on Node process (and, below, a persistent disk), which is what
+# Render is for here.
+services:
+  - type: web
+    name: spout-api
+    runtime: node
+    plan: starter
+    region: oregon
+    rootDir: .
+    buildCommand: npm ci
+    # tsx runs the TypeScript source directly (same as the local `npm run
+    # start -w @spout/api` — see packages/api/package.json) — no separate
+    # compile step in this deploy.
+    startCommand: npm run start -w @spout/api
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 24
+      # Points the sightings SQLite store at the persistent disk mounted
+      # below instead of packages/api/data/ (which sits on this service's
+      # own ephemeral container filesystem and would be wiped on every
+      # deploy/restart). See app.ts's openDefaultSightingsDb doc comment:
+      # losing this file isn't just losing cached data, it re-triggers a
+      # full ~400-day cold-start backfill (ADR 0004) on every restart
+      # instead of the intended once-ever.
+      - key: SIGHTINGS_DB_PATH
+        value: /var/data/spout.db
+    disk:
+      name: sightings-data
+      mountPath: /var/data
+      sizeGB: 1

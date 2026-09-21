@@ -1,4 +1,5 @@
 import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ProbabilityGrid, Sighting } from "@spout/contracts";
 import type Database from "better-sqlite3";
@@ -39,6 +40,15 @@ const INATURALIST_REFRESH_TTL_MS = 1000 * 60 * 60;
 /** Same reasoning as SIGHTINGS_REFRESH_MAX_STALE_MS, applied to the faster-refreshing iNaturalist cache. */
 const INATURALIST_REFRESH_MAX_STALE_MS = 1000 * 60 * 60 * 24 * 7;
 
+/**
+ * Overridable via `SIGHTINGS_DB_PATH` so a deploy can point this at a
+ * mounted persistent disk (e.g. Render's) instead of the package's own
+ * `data/` directory, which lives on ephemeral container storage in
+ * production — without an override, every redeploy/restart would silently
+ * start from an empty database, re-triggering the cold-start ~400-day
+ * backfill (ADR 0004) and reproducing the "200 []" ambiguous-empty-window
+ * behavior on every restart instead of just once, ever.
+ */
 const DEFAULT_SIGHTINGS_DB_PATH = fileURLToPath(new URL("../data/spout.db", import.meta.url));
 
 export interface CreateAppOptions {
@@ -99,6 +109,7 @@ export function createApp(options: CreateAppOptions = {}) {
 }
 
 function openDefaultSightingsDb(): Database.Database {
-  mkdirSync(fileURLToPath(new URL("../data", import.meta.url)), { recursive: true });
-  return openSightingsDb(DEFAULT_SIGHTINGS_DB_PATH);
+  const dbPath = process.env.SIGHTINGS_DB_PATH ?? DEFAULT_SIGHTINGS_DB_PATH;
+  mkdirSync(dirname(dbPath), { recursive: true });
+  return openSightingsDb(dbPath);
 }

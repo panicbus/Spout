@@ -9,6 +9,28 @@
       content="Spout — a mobile-first map of blue whale probability and recent research/citizen sightings along the California coast."
     />
     <title>Spout — California Whale Tracker</title>
+
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <!--
+      vite-plugin-pwa injects the manifest link itself at build time — not
+      declared here, since a hand-written duplicate would fight its own
+      generated one.
+
+      The apple-mobile-web-app-* meta tags below exist because iOS Safari
+      never reads a web manifest for its home-screen/standalone behavior —
+      only these tags. Kept deliberately, not redundant with the manifest:
+      this is also the first-class PWA path the plan always intended as a
+      stepping stone toward a real iOS app shell later (a Capacitor/similar
+      wrapper installs around this same built web app), so getting iOS's
+      own install experience right now, not just Android's, matters beyond
+      today's web deploy.
+    -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Spout" />
+    <meta name="mobile-web-app-capable" content="yes" />
   </head>
   <body>
     <div id="root"></div>

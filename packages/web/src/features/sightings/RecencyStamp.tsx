@@ -1,6 +1,7 @@
 import { Stamp } from "../../components/ui/Stamp.js";
 import { ageInDays } from "../../lib/ageBucket.js";
 import { formatDaysAgo, mostRecentObservedAt } from "../../lib/recency.js";
+import { useNow } from "../../lib/useNow.js";
 import { useSightings } from "../../lib/useSightings.js";
 import styles from "./RecencyStamp.module.css";
 
@@ -26,15 +27,15 @@ export interface RecencyStampProps {
  *   doubles the real GBIF/iNaturalist cost — just two cheap local SQLite
  *   reads. Revisit only if a real shared sightings cache is built for
  *   other reasons.
- * - The displayed "N days ago" only recomputes on a refetch (a window
- *   change, or component remount), not continuously as real time passes —
- *   a tab left open for a day+ will show an increasingly stale count.
- *   This matches every other layer in the app today (nothing polls), so
- *   it's an existing app-wide characteristic this stamp inherits rather
- *   than a new gap; a "refresh on a timer" pass is a reasonable future
- *   round if long-lived sessions turn out to matter in practice.
+ * - The displayed "N days ago" recomputes on a 5-minute timer (`useNow`),
+ *   not just on a refetch — a tab left open across a day boundary no
+ *   longer shows an increasingly stale count indefinitely. `now` stays
+ *   overridable via props (tests pass a fixed value and never see the
+ *   ticking one) rather than always reading the live clock internally.
  */
-export function RecencyStamp({ now = new Date() }: RecencyStampProps) {
+export function RecencyStamp({ now }: RecencyStampProps) {
+  const liveNow = useNow();
+  const effectiveNow = now ?? liveNow;
   const result = useSightings({ window: "latest" });
 
   if (result.state !== "ok") return null;
@@ -43,7 +44,7 @@ export function RecencyStamp({ now = new Date() }: RecencyStampProps) {
   const message =
     latest === null
       ? "No reports in the last 7 days"
-      : `Most recent report: ${formatDaysAgo(ageInDays(latest, now))}`;
+      : `Most recent report: ${formatDaysAgo(ageInDays(latest, effectiveNow))}`;
 
   return (
     <div className={styles.wrapper}>
