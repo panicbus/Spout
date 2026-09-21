@@ -8,15 +8,39 @@ function newMap() {
   return new MapMock({}) as unknown as import("maplibre-gl").Map;
 }
 
-/** A fake card element with a fixed bounding rect, for the hook's `cardRef`. */
-function fakeCardRef(rect: Partial<DOMRect>): RefObject<HTMLElement | null> {
+/**
+ * A fake card element with a fixed bounding rect, for the hook's
+ * `cardRef`. Derives `width`/`height` from `left`/`right`/`top`/`bottom`
+ * itself — a real `getBoundingClientRect()` always keeps these
+ * internally consistent, and the hook's own "has this actually rendered
+ * yet" check depends on that (a hand-built rect that left `width`/
+ * `height` at a stale 0 while setting real left/right/top/bottom would
+ * silently look permanently unrendered to it).
+ */
+function fakeCardRef(rect: { left: number; top: number; right: number; bottom: number }): RefObject<HTMLElement | null> {
   const el = document.createElement("div");
   el.getBoundingClientRect = () =>
-    ({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}), ...rect }) as DOMRect;
+    ({
+      left: rect.left,
+      top: rect.top,
+      right: rect.right,
+      bottom: rect.bottom,
+      width: rect.right - rect.left,
+      height: rect.bottom - rect.top,
+      x: rect.left,
+      y: rect.top,
+      toJSON: () => ({}),
+    }) as DOMRect;
   return { current: el };
 }
 
 const CONTAINER_RECT = { left: 0, top: 0, right: 400, bottom: 800, width: 400, height: 800 };
+
+async function waitFrames(count: number): Promise<void> {
+  if (count <= 0) return;
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  await waitFrames(count - 1);
+}
 
 function mockContainer(map: ReturnType<typeof newMap>, rect: Partial<DOMRect> = CONTAINER_RECT) {
   (mapInstances[0]!.getContainer as ReturnType<typeof import("vitest").vi.fn>).mockReturnValue({
@@ -103,6 +127,42 @@ describe("usePanCardIntoView", () => {
     await waitFor(() => expect(mapInstances[0]!.easeTo).toHaveBeenCalled());
     const unprojectedPoint = mapInstances[0]!.unproject.mock.calls[0]![0] as [number, number];
     expect(unprojectedPoint[0]).toBeGreaterThan(200);
+  });
+
+  it("waits across multiple frames for the card to actually appear in the DOM before measuring — the real first-click race: AnchoredCard doesn't render until `anchor` resolves, which lands a render or two after this hook's own effect, so the card can genuinely be absent on frame 1", async () => {
+    const map = newMap();
+    mockContainer(map);
+    const cardRef: RefObject<HTMLElement | null> = { current: null };
+
+    renderHook(() => usePanCardIntoView(map, cardRef, "sighting-1"));
+
+    // Card doesn't exist for the first few frames (still null, matching
+    // AnchoredCard's own `if (!open || !anchor) return null`).
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(mapInstances[0]!.easeTo).not.toHaveBeenCalled();
+
+    // Now it mounts, overflowing the top edge — exactly what happens once
+    // useProjectedPoint's effect resolves the real anchor and AnchoredCard
+    // finally renders.
+    cardRef.current = fakeCardRef({ left: 100, top: -50, right: 300, bottom: 150 }).current;
+
+    await waitFor(() => expect(mapInstances[0]!.easeTo).toHaveBeenCalled());
+    const unprojectedPoint = mapInstances[0]!.unproject.mock.calls[0]![0] as [number, number];
+    expect(unprojectedPoint[1]).toBeLessThan(400);
+  });
+
+  it("gives up after the frame ceiling if the card never appears (e.g. the selection was cleared again before it ever rendered)", async () => {
+    const map = newMap();
+    mockContainer(map);
+    const cardRef: RefObject<HTMLElement | null> = { current: null };
+
+    renderHook(() => usePanCardIntoView(map, cardRef, "sighting-1"));
+
+    // Never set cardRef.current — let every polling frame elapse.
+    await waitFrames(25);
+
+    expect(mapInstances[0]!.easeTo).not.toHaveBeenCalled();
   });
 
   it("does not re-run the check on every render — only when trigger changes", async () => {

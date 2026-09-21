@@ -2,6 +2,19 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 import { useEffect, type RefObject } from "react";
 
 const MARGIN = 16;
+/**
+ * A first click's card genuinely doesn't exist in the DOM on the very
+ * first frame after `trigger` changes — `AnchoredCard` only renders once
+ * `anchor` resolves, and `anchor` (from `useProjectedPoint`) starts out
+ * `null`/stale until ITS OWN effect fires and re-renders. That's at
+ * least one extra React commit beyond this hook's own effect, and
+ * exactly how many frames it takes isn't something to hard-code — so
+ * this polls for a bounded number of frames instead of assuming one is
+ * enough. 20 frames (~330ms at 60fps) is generously more than the 1-2
+ * extra commits this ever actually needs; it exists as a real ceiling,
+ * not a tuned value.
+ */
+const MAX_FRAMES_TO_WAIT = 20;
 
 /**
  * Whenever `trigger` changes (a new card just opened), nudges the map so
@@ -15,12 +28,6 @@ const MARGIN = 16;
  * hook's own corrective one), and re-running this check on every move
  * would fight a user deliberately dragging a near-edge card into view
  * themselves.
- *
- * Measured a frame after `trigger` changes, not synchronously in the
- * effect — `AnchoredCard` only renders once `anchor` resolves (via
- * `useProjectedPoint`'s own effect), which lands one render after the
- * selection itself changes; waiting for `requestAnimationFrame` measures
- * the card's real post-layout position instead of racing that.
  */
 export function usePanCardIntoView(
   map: MapLibreMap | null,
@@ -30,11 +37,24 @@ export function usePanCardIntoView(
   useEffect(() => {
     if (!map || trigger === null || trigger === undefined) return;
 
-    const raf = requestAnimationFrame(() => {
-      const card = cardRef.current;
-      if (!card) return;
+    let rafId: number;
+    let framesWaited = 0;
 
-      const cardRect = card.getBoundingClientRect();
+    const attempt = () => {
+      const card = cardRef.current;
+      const cardRect = card?.getBoundingClientRect();
+
+      // Not rendered yet (anchor still resolving) or not laid out yet
+      // (zero size) — keep waiting rather than silently doing nothing,
+      // up to the frame ceiling.
+      if (!cardRect || (cardRect.width === 0 && cardRect.height === 0)) {
+        framesWaited += 1;
+        if (framesWaited < MAX_FRAMES_TO_WAIT) {
+          rafId = requestAnimationFrame(attempt);
+        }
+        return;
+      }
+
       const containerRect = map.getContainer().getBoundingClientRect();
 
       let shiftX = 0;
@@ -58,8 +78,9 @@ export function usePanCardIntoView(
         containerRect.height / 2 + shiftY,
       ];
       map.easeTo({ center: map.unproject(centerPoint), duration: 300 });
-    });
+    };
 
-    return () => cancelAnimationFrame(raf);
+    rafId = requestAnimationFrame(attempt);
+    return () => cancelAnimationFrame(rafId);
   }, [map, cardRef, trigger]);
 }
