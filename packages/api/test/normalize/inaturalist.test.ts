@@ -44,6 +44,25 @@ describe("normalizeINaturalistObservation", () => {
     });
   });
 
+  it("sets attribution.datasetName to a plain 'Observation', not a redundant 'iNaturalist.org observations' (the card already says 'via iNaturalist.org')", () => {
+    const sighting = normalizeINaturalistObservation(validObservation());
+    expect(sighting?.attribution.datasetName).toBe("Observation");
+  });
+
+  it("upgrades the first photo's URL from iNaturalist's 75px 'square' thumbnail to a real detail-card-sized 'medium' image", () => {
+    const sighting = normalizeINaturalistObservation(
+      validObservation({
+        photos: [{ url: "https://inaturalist-open-data.s3.amazonaws.com/photos/735666059/square.jpg" }],
+      }),
+    );
+    expect(sighting?.photoUrl).toBe("https://inaturalist-open-data.s3.amazonaws.com/photos/735666059/medium.jpg");
+  });
+
+  it("leaves photoUrl undefined when the observation has no photos", () => {
+    const sighting = normalizeINaturalistObservation(validObservation({ photos: undefined }));
+    expect(sighting?.photoUrl).toBeUndefined();
+  });
+
   it("maps quality_grade 'needs_id' to verification 'unverified'", () => {
     const sighting = normalizeINaturalistObservation(validObservation({ quality_grade: "needs_id" }));
     expect(sighting?.verification).toBe("unverified");

@@ -41,6 +41,25 @@ describe("normalizeGbifRecord", () => {
     });
   });
 
+  it("pulls photoUrl from the Multimedia extension's first StillImage entry", () => {
+    const sighting = normalizeGbifRecord(
+      validRecord({
+        media: [
+          { type: "StillImage", identifier: "https://inaturalist-open-data.s3.amazonaws.com/photos/1/original.jpg" },
+        ],
+      }),
+    );
+    expect(sighting?.photoUrl).toBe("https://inaturalist-open-data.s3.amazonaws.com/photos/1/original.jpg");
+  });
+
+  it("leaves photoUrl undefined when there's no media, or no StillImage entry in it", () => {
+    expect(normalizeGbifRecord(validRecord({ media: undefined }))?.photoUrl).toBeUndefined();
+    expect(
+      normalizeGbifRecord(validRecord({ media: [{ type: "Sound", identifier: "https://example.com/a.mp3" }] }))
+        ?.photoUrl,
+    ).toBeUndefined();
+  });
+
   it("maps CC-BY-NC to commercialUse: false", () => {
     const sighting = normalizeGbifRecord(
       validRecord({ license: "http://creativecommons.org/licenses/by-nc/4.0/legalcode" }),

@@ -28,6 +28,23 @@ const SCHEMA = `
 `;
 
 /**
+ * `CREATE TABLE IF NOT EXISTS` only creates the table on a brand-new
+ * database — it does nothing for a column added after a real on-disk
+ * database already exists (R2/R3's local dev DB and any deployed one),
+ * so a genuinely new column needs its own explicit, idempotent
+ * `ALTER TABLE`. Checked via `PRAGMA table_info` rather than a blind
+ * try/catch around "duplicate column name", so a real ALTER failure
+ * (not just "already applied") still surfaces instead of being silently
+ * swallowed.
+ */
+function migrate(db: Database.Database): void {
+  const columns = db.prepare("PRAGMA table_info(sightings)").all() as { name: string }[];
+  if (!columns.some((column) => column.name === "photo_url")) {
+    db.exec("ALTER TABLE sightings ADD COLUMN photo_url TEXT");
+  }
+}
+
+/**
  * Opens (creating if needed) the sightings SQLite database. `:memory:`
  * for tests; a real file path in production so a backfilled corpus
  * survives a process restart (unlike `ProbabilityCache`, which has
@@ -37,6 +54,7 @@ export function openSightingsDb(path: string): Database.Database {
   const db = new Database(path);
   db.pragma("journal_mode = WAL");
   db.exec(SCHEMA);
+  migrate(db);
   return db;
 }
 
@@ -51,6 +69,7 @@ interface SightingRow {
   verification: string;
   coordinates_obscured: number;
   positional_uncertainty_m: number | null;
+  photo_url: string | null;
   dataset_name: string;
   dataset_id: string;
   publisher_name: string;
@@ -74,6 +93,7 @@ function rowToSighting(row: SightingRow): Sighting {
     verification: row.verification as Sighting["verification"],
     coordinatesObscured: Boolean(row.coordinates_obscured),
     positionalUncertaintyMeters: row.positional_uncertainty_m ?? undefined,
+    photoUrl: row.photo_url ?? undefined,
     attribution: {
       datasetName: row.dataset_name,
       datasetId: row.dataset_id,
@@ -99,12 +119,12 @@ function rowToSighting(row: SightingRow): Sighting {
 const UPSERT_SQL = `
   INSERT OR REPLACE INTO sightings (
     id, species, lat, lon, observed_at, tier, source_api, verification,
-    coordinates_obscured, positional_uncertainty_m,
+    coordinates_obscured, positional_uncertainty_m, photo_url,
     dataset_name, dataset_id, publisher_name, publisher_id, citation, attribution_url,
     license_id, license_url, license_commercial_use
   ) VALUES (
     @id, @species, @lat, @lon, @observedAt, @tier, @sourceApi, @verification,
-    @coordinatesObscured, @positionalUncertaintyMeters,
+    @coordinatesObscured, @positionalUncertaintyMeters, @photoUrl,
     @datasetName, @datasetId, @publisherName, @publisherId, @citation, @attributionUrl,
     @licenseId, @licenseUrl, @licenseCommercialUse
   )
@@ -129,6 +149,7 @@ export function upsertSightings(db: Database.Database, sightings: Sighting[]): v
         verification: sighting.verification,
         coordinatesObscured: sighting.coordinatesObscured ? 1 : 0,
         positionalUncertaintyMeters: sighting.positionalUncertaintyMeters ?? null,
+        photoUrl: sighting.photoUrl ?? null,
         datasetName: sighting.attribution.datasetName,
         datasetId: sighting.attribution.datasetId,
         publisherName: sighting.attribution.publisherName,

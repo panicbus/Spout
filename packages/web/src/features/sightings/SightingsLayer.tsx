@@ -1,9 +1,10 @@
-import type { AddLayerObject, MapGeoJSONFeature } from "maplibre-gl";
+import type { AddLayerObject, GeoJSONSource, MapMouseEvent } from "maplibre-gl";
 import type { Sighting, TimeWindow } from "@spout/contracts";
-import { useCallback, useState } from "react";
+import type { Point } from "geojson";
+import { useEffect, useState } from "react";
 import { useMap } from "../../components/map/MapContext.js";
 import { useGeoJsonMapLayer } from "../../components/map/useGeoJsonMapLayer.js";
-import { useLayerClick } from "../../components/map/useLayerClick.js";
+import { useProjectedPoint } from "../../components/map/useProjectedPoint.js";
 import { sightingsToGeoJson } from "../../lib/sightingsGeoJson.js";
 import { useSightings } from "../../lib/useSightings.js";
 import { PinDetailCard } from "./PinDetailCard.js";
@@ -80,8 +81,19 @@ const pointsLayer: AddLayerObject = {
     ],
     // Obscured coordinates are geoprivacy-randomized, not measured —
     // rendered larger and softer so it reads as an approximate area, not
-    // a precise pin.
-    "circle-radius": ["case", ["get", "coordinatesObscured"], 11, 6],
+    // a precise pin. Citizen reports (orange) are sized up a step from
+    // research/acoustic (blue/gray) on top of that — they're the
+    // majority of what a casual user actually taps, and at the default
+    // 6px radius they read as barely-visible flecks against the
+    // probability raster's color range.
+    "circle-radius": [
+      "case",
+      ["get", "coordinatesObscured"],
+      13,
+      ["==", ["get", "tier"], "citizen"],
+      9,
+      6,
+    ],
     // Unverified citizen reports (iNaturalist "needs_id") render faded,
     // distinct from confirmed research-grade/verified data, further faded
     // by age (the "match" on ageBucket below, from AGE_OPACITY — the one
@@ -156,7 +168,7 @@ export interface SightingsLayerProps {
 export function SightingsLayer({ timeWindow }: SightingsLayerProps) {
   const map = useMap();
   const result = useSightings({ window: timeWindow });
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selection, setSelection] = useState<{ id: string; lngLat: [number, number] } | null>(null);
   const [lastData, setLastData] = useState<Sighting[]>([]);
 
   useGeoJsonMapLayer(map, result, sightingsToGeoJson, {
@@ -167,7 +179,7 @@ export function SightingsLayer({ timeWindow }: SightingsLayerProps) {
 
   // `useMapLayerLifecycle` deliberately leaves the previously-rendered
   // pins on screen (and clickable) for the full duration of a refetch —
-  // see its own doc comment. Resolving `selectedId` against the last
+  // see its own doc comment. Resolving `selection` against the last
   // successfully-fetched data (kept in sync with what's actually
   // painted, not with the in-flight fetch's own state) rather than
   // against `result` directly means a click still resolves correctly
@@ -182,19 +194,66 @@ export function SightingsLayer({ timeWindow }: SightingsLayerProps) {
     setLastData(result.data);
   }
 
+  // One whole-map click handler, not per-layer listeners: a tap can hit
+  // an individual point (open its detail card), a cluster (zoom in to
+  // expand it — MapLibre's own supercluster-backed source knows the
+  // right zoom level to actually split it), or neither (dismiss whatever
+  // was open). A layer-scoped listener per case can't express "dismiss
+  // when the click hit nothing", so this queries both layers at the
+  // click point itself and branches on what it finds. Guards each layer
+  // id with `getLayer` first — `queryRenderedFeatures` throws (not
+  // no-ops) for a layer id that doesn't exist on the map yet.
+  useEffect(() => {
+    if (!map) return;
+
+    const handleClick = (e: MapMouseEvent) => {
+      const layers = [SIGHTINGS_POINTS_LAYER_ID, SIGHTINGS_CLUSTERS_LAYER_ID].filter((id) => map.getLayer(id));
+      if (layers.length === 0) return;
+
+      const features = map.queryRenderedFeatures(e.point, { layers });
+
+      const pointFeature = features.find((feature) => feature.layer.id === SIGHTINGS_POINTS_LAYER_ID);
+      if (pointFeature) {
+        const id = pointFeature.properties?.id as string | undefined;
+        const lngLat = (pointFeature.geometry as Point).coordinates as [number, number];
+        setSelection(id ? { id, lngLat } : null);
+        return;
+      }
+
+      const clusterFeature = features.find((feature) => feature.layer.id === SIGHTINGS_CLUSTERS_LAYER_ID);
+      if (clusterFeature) {
+        const clusterId = clusterFeature.properties?.cluster_id as number | undefined;
+        const center = (clusterFeature.geometry as Point).coordinates as [number, number];
+        const source = map.getSource(SIGHTINGS_SOURCE_ID) as GeoJSONSource | undefined;
+        if (clusterId !== undefined && source) {
+          source
+            .getClusterExpansionZoom(clusterId)
+            .then((zoom) => map.easeTo({ center, zoom }))
+            // A transient query failure (source mid-update) has nothing
+            // useful to recover to — just don't crash the click handler.
+            .catch(() => {});
+        }
+        return;
+      }
+
+      setSelection(null);
+    };
+
+    map.on("click", handleClick);
+    return () => {
+      map.off("click", handleClick);
+    };
+  }, [map]);
+
   // The tapped feature only carries what sightingsToGeoJson put in its
   // properties (id/species/tier/verification/coordinatesObscured/
-  // ageBucket, not license/citation/positional uncertainty) — looking the
-  // full Sighting up by id from the already-fetched result, rather than
-  // widening the GeoJSON properties, keeps that conversion focused on
-  // exactly what paint expressions need (see its own doc comment).
-  const handleFeatureClick = useCallback((feature: MapGeoJSONFeature) => {
-    setSelectedId((feature.properties?.id as string | undefined) ?? null);
-  }, []);
+  // ageBucket, not license/citation/positional uncertainty/photo) —
+  // looking the full Sighting up by id from the already-fetched result,
+  // rather than widening the GeoJSON properties, keeps that conversion
+  // focused on exactly what paint expressions need (see its own doc
+  // comment).
+  const selected = selection ? (lastData.find((sighting) => sighting.id === selection.id) ?? null) : null;
+  const anchor = useProjectedPoint(map, selection?.lngLat ?? null);
 
-  useLayerClick(map, SIGHTINGS_POINTS_LAYER_ID, handleFeatureClick);
-
-  const selected = selectedId ? (lastData.find((sighting) => sighting.id === selectedId) ?? null) : null;
-
-  return <PinDetailCard sighting={selected} onClose={() => setSelectedId(null)} />;
+  return <PinDetailCard sighting={selected} anchor={anchor} onClose={() => setSelection(null)} />;
 }

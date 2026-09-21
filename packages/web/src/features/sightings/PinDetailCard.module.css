@@ -5,6 +5,20 @@
   font-size: 0.9rem;
 }
 
+.photo {
+  width: 100%;
+  max-height: 160px;
+  object-fit: cover;
+  border-radius: 8px;
+  margin: -0.1rem 0 0.1rem;
+}
+
+.title {
+  margin: 0;
+  padding-right: 1.5rem;
+  font-size: 1.05rem;
+}
+
 .badges {
   display: flex;
   gap: 0.5rem;
@@ -36,4 +50,11 @@
 .citation {
   margin: 0;
   font-style: italic;
+}
+
+.license {
+  margin: 0.3rem 0 0;
+  text-align: center;
+  font-size: 0.7rem;
+  color: #888;
 }

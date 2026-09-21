@@ -24,6 +24,8 @@ export interface GbifOccurrence {
   coordinateUncertaintyInMeters?: number;
   /** Used only to detect the R3 iNaturalist-dataset de-dup case below — see `INATURALIST_GBIF_DATASET_KEY`. */
   occurrenceID?: string;
+  /** GBIF's Darwin Core Multimedia extension — `type: "StillImage"` entries carry a real, full-size photo URL in `identifier`. */
+  media?: { type: string; identifier: string }[];
 }
 
 /**
@@ -143,6 +145,7 @@ export function normalizeGbifRecord(record: GbifOccurrence): Sighting | null {
       record.coordinateUncertaintyInMeters !== undefined &&
       record.coordinateUncertaintyInMeters >= OBSCURED_UNCERTAINTY_THRESHOLD_M,
     positionalUncertaintyMeters: record.coordinateUncertaintyInMeters,
+    photoUrl: record.media?.find((item) => item.type === "StillImage")?.identifier,
     attribution: {
       datasetName: record.datasetName,
       datasetId: record.datasetKey,

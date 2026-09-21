@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TimeWindow } from "@spout/contracts";
 import { MapCanvas } from "../../components/map/MapCanvas.js";
 import * as apiClient from "../../lib/apiClient.js";
-import { mapInstances, resetMaplibreMock } from "../../test/maplibre-mock.js";
+import { mapInstances, resetMaplibreMock, type MapInstanceMock } from "../../test/maplibre-mock.js";
 import {
   SIGHTINGS_CLUSTERS_LAYER_ID,
   SIGHTINGS_CLUSTER_COUNT_LAYER_ID,
@@ -18,6 +18,29 @@ vi.mock("../../lib/apiClient.js", async () => {
   const actual = await vi.importActual<typeof apiClient>("../../lib/apiClient.js");
   return { ...actual, fetchSightings: vi.fn() };
 });
+
+/** Simulates a real click on the map — the combined whole-map handler this layer uses instead of a layer-scoped listener. */
+function clickMap(map: MapInstanceMock, point = { x: 50, y: 50 }) {
+  map.trigger("click", { point });
+}
+
+/** A `queryRenderedFeatures`-shaped hit on the unclustered points layer, as a real MapLibre click would return. */
+function pointFeature(id: string, coordinates: [number, number] = [-122.1, 36.5]) {
+  return {
+    layer: { id: SIGHTINGS_POINTS_LAYER_ID },
+    properties: { id },
+    geometry: { type: "Point", coordinates },
+  };
+}
+
+/** A `queryRenderedFeatures`-shaped hit on the clusters layer. */
+function clusterFeatureHit(clusterId: number, coordinates: [number, number] = [-122.1, 36.5]) {
+  return {
+    layer: { id: SIGHTINGS_CLUSTERS_LAYER_ID },
+    properties: { cluster_id: clusterId, point_count: 12 },
+    geometry: { type: "Point", coordinates },
+  };
+}
 
 describe("SightingsLayer", () => {
   beforeEach(() => {
@@ -134,6 +157,27 @@ describe("SightingsLayer", () => {
     const paint = (pointsLayerCall?.[0] as { paint: { "circle-radius": unknown[] } }).paint;
     expect(paint["circle-radius"]).toEqual(
       expect.arrayContaining(["case", ["get", "coordinatesObscured"]]),
+    );
+  });
+
+  it("renders citizen-report pins bigger than the default so they're actually noticeable against the probability raster", async () => {
+    vi.mocked(apiClient.fetchSightings).mockResolvedValue([buildSighting()]);
+
+    render(
+      <MapCanvas>
+        <SightingsLayer timeWindow="30d" />
+      </MapCanvas>,
+    );
+    const map = mapInstances[0]!;
+    await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
+    map.trigger("load");
+
+    const pointsLayerCall = map.addLayer.mock.calls.find(
+      (call: unknown[]) => (call[0] as { id: string }).id === SIGHTINGS_POINTS_LAYER_ID,
+    );
+    const paint = (pointsLayerCall?.[0] as { paint: { "circle-radius": unknown[] } }).paint;
+    expect(paint["circle-radius"]).toEqual(
+      expect.arrayContaining([expect.arrayContaining(["==", ["get", "tier"], "citizen"])]),
     );
   });
 
@@ -298,11 +342,76 @@ describe("SightingsLayer", () => {
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
-    map.triggerLayerEvent("click", SIGHTINGS_POINTS_LAYER_ID, {
-      features: [{ properties: { id: "gbif:42" } }],
-    });
+    map.getLayer.mockReturnValue({ id: "exists" });
+    map.queryRenderedFeatures.mockReturnValue([pointFeature("gbif:42")]);
+    clickMap(map);
 
     await waitFor(() => expect(screen.getByRole("dialog")).toHaveAccessibleName("Orca"));
+  });
+
+  it("zooms into a cluster (not opening a detail card) when a cluster is clicked", async () => {
+    vi.mocked(apiClient.fetchSightings).mockResolvedValue([buildSighting()]);
+    const getClusterExpansionZoom = vi.fn().mockResolvedValue(9);
+
+    render(
+      <MapCanvas>
+        <SightingsLayer timeWindow="30d" />
+      </MapCanvas>,
+    );
+    const map = mapInstances[0]!;
+    await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
+    map.trigger("load");
+    await waitFor(() => expect(map.addSource).toHaveBeenCalled());
+
+    map.getLayer.mockReturnValue({ id: "exists" });
+    map.getSource.mockReturnValue({ setData: vi.fn(), getClusterExpansionZoom });
+    map.queryRenderedFeatures.mockReturnValue([clusterFeatureHit(7, [-121.5, 36.9])]);
+    clickMap(map);
+
+    expect(getClusterExpansionZoom).toHaveBeenCalledWith(7);
+    await waitFor(() => expect(map.easeTo).toHaveBeenCalledWith({ center: [-121.5, 36.9], zoom: 9 }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("dismisses an open detail card when the click hits neither a point nor a cluster", async () => {
+    const sighting = buildSighting({ id: "gbif:42", species: "orca" });
+    vi.mocked(apiClient.fetchSightings).mockResolvedValue([sighting]);
+
+    render(
+      <MapCanvas>
+        <SightingsLayer timeWindow="30d" />
+      </MapCanvas>,
+    );
+    const map = mapInstances[0]!;
+    await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
+    map.trigger("load");
+    await waitFor(() => expect(map.addSource).toHaveBeenCalled());
+
+    map.getLayer.mockReturnValue({ id: "exists" });
+    map.queryRenderedFeatures.mockReturnValue([pointFeature("gbif:42")]);
+    clickMap(map);
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+
+    map.queryRenderedFeatures.mockReturnValue([]);
+    clickMap(map);
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("does nothing on click before the sightings layers exist on the map yet (queryRenderedFeatures would throw for a layer id that isn't there)", async () => {
+    vi.mocked(apiClient.fetchSightings).mockResolvedValue([buildSighting()]);
+
+    render(
+      <MapCanvas>
+        <SightingsLayer timeWindow="30d" />
+      </MapCanvas>,
+    );
+    const map = mapInstances[0]!;
+    await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
+    // Deliberately never triggers "load" — the layers never get added.
+
+    expect(() => clickMap(map)).not.toThrow();
+    expect(map.queryRenderedFeatures).not.toHaveBeenCalled();
   });
 
   it("still opens PinDetailCard for a still-visible pin while a refetch triggered by a FilterBar change is in flight (antagonist finding: a click handler gated on the fetch's own 'ok' state silently no-ops against pins useMapLayerLifecycle deliberately leaves on screen mid-refetch)", async () => {
@@ -336,9 +445,9 @@ describe("SightingsLayer", () => {
       </MapCanvas>,
     );
 
-    map.triggerLayerEvent("click", SIGHTINGS_POINTS_LAYER_ID, {
-      features: [{ properties: { id: "gbif:42" } }],
-    });
+    map.getLayer.mockReturnValue({ id: "exists" });
+    map.queryRenderedFeatures.mockReturnValue([pointFeature("gbif:42")]);
+    clickMap(map);
 
     await waitFor(() => expect(screen.getByRole("dialog")).toHaveAccessibleName("Orca"));
 
@@ -360,9 +469,9 @@ describe("SightingsLayer", () => {
     map.trigger("load");
     await waitFor(() => expect(map.addSource).toHaveBeenCalled());
 
-    map.triggerLayerEvent("click", SIGHTINGS_POINTS_LAYER_ID, {
-      features: [{ properties: { id: "gbif:42" } }],
-    });
+    map.getLayer.mockReturnValue({ id: "exists" });
+    map.queryRenderedFeatures.mockReturnValue([pointFeature("gbif:42")]);
+    clickMap(map);
     await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: /close/i }));

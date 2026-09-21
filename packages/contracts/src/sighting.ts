@@ -43,6 +43,8 @@ export const SightingSchema = z.object({
    * ±5km vague report as visually identical pins.
    */
   positionalUncertaintyMeters: z.number().nonnegative().optional(),
+  /** A real, hotlinked photo URL from the source record, when one exists (GBIF's Multimedia extension, iNaturalist's `photos[]`) — not every sighting has one. */
+  photoUrl: z.string().url().optional(),
   attribution: AttributionSchema,
 });
 export type Sighting = z.infer<typeof SightingSchema>;

@@ -23,6 +23,19 @@ export interface INaturalistObservation {
   positional_accuracy?: number | null;
   user?: { login: string } | null;
   uri: string;
+  /** iNaturalist always serves this as a 75px "square" thumbnail — see `upgradePhotoSize` below for why the card doesn't use it directly. */
+  photos?: { url: string }[];
+}
+
+/**
+ * iNaturalist's `photos[].url` is always the 75px "square" thumbnail
+ * variant; swapping the filename for "medium" (500px, still a real,
+ * always-available size per iNaturalist's own photo-serving convention —
+ * verified against the live fixture) gets a real detail-card-sized image
+ * from the same photo without a second API call.
+ */
+function upgradePhotoSize(url: string): string {
+  return url.replace(/\/square(\.\w+)$/, "/medium$1");
 }
 
 /**
@@ -107,8 +120,9 @@ export function normalizeINaturalistObservation(obs: INaturalistObservation): Si
     verification: obs.quality_grade === "research" ? ("verified" as const) : ("unverified" as const),
     coordinatesObscured: obs.obscured,
     positionalUncertaintyMeters: obs.public_positional_accuracy ?? undefined,
+    photoUrl: obs.photos?.[0] ? upgradePhotoSize(obs.photos[0].url) : undefined,
     attribution: {
-      datasetName: "iNaturalist.org observations",
+      datasetName: "Observation",
       datasetId: "inaturalist-api-direct",
       publisherName: "iNaturalist.org",
       publisherId: "inaturalist.org",

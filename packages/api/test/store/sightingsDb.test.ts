@@ -1,5 +1,9 @@
 import { buildAttribution, buildSighting } from "@spout/contracts/fixtures.js";
-import { beforeEach, describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import RawDatabase from "better-sqlite3";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type Database from "better-sqlite3";
 import {
   hasGbifSightings,
@@ -23,6 +27,15 @@ describe("sightingsDb", () => {
     const [result] = querySightings(db, {});
 
     expect(result).toEqual(sighting);
+  });
+
+  it("round-trips photoUrl when present, and back to undefined (not null) when absent", () => {
+    upsertSightings(db, [buildSighting({ id: "a", photoUrl: "https://example.com/photo.jpg" })]);
+    upsertSightings(db, [buildSighting({ id: "b", photoUrl: undefined })]);
+
+    const results = querySightings(db, {});
+    expect(results.find((s) => s.id === "a")?.photoUrl).toBe("https://example.com/photo.jpg");
+    expect(results.find((s) => s.id === "b")?.photoUrl).toBeUndefined();
   });
 
   it("replaces a sighting with the same id instead of duplicating it — refresh must not accumulate stale copies", () => {
@@ -121,6 +134,55 @@ describe("sightingsDb", () => {
     const results = querySightings(db, { limit: 5 });
 
     expect(results).toHaveLength(5);
+  });
+});
+
+describe("openSightingsDb migration", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "spout-sightings-migration-"));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("adds photo_url to a real on-disk database created before that column existed, without losing existing rows", () => {
+    const path = join(dir, "sightings.db");
+
+    // Simulate a pre-photoUrl deploy: the table exists, but predates the
+    // ALTER TABLE this migration adds — CREATE TABLE IF NOT EXISTS alone
+    // would never add a missing column to an already-existing table.
+    const legacy = new RawDatabase(path);
+    legacy.exec(`
+      CREATE TABLE sightings (
+        id TEXT PRIMARY KEY, species TEXT NOT NULL, lat REAL NOT NULL, lon REAL NOT NULL,
+        observed_at TEXT NOT NULL, tier TEXT NOT NULL, source_api TEXT NOT NULL,
+        verification TEXT NOT NULL, coordinates_obscured INTEGER NOT NULL,
+        positional_uncertainty_m REAL, dataset_name TEXT NOT NULL, dataset_id TEXT NOT NULL,
+        publisher_name TEXT NOT NULL, publisher_id TEXT NOT NULL, citation TEXT,
+        attribution_url TEXT, license_id TEXT NOT NULL, license_url TEXT,
+        license_commercial_use INTEGER NOT NULL
+      );
+    `);
+    legacy
+      .prepare(
+        `INSERT INTO sightings (id, species, lat, lon, observed_at, tier, source_api, verification, coordinates_obscured, dataset_name, dataset_id, publisher_name, publisher_id, license_id, license_commercial_use)
+         VALUES ('pre-existing', 'orca', 36.5, -122.1, '2026-09-01T00:00:00.000Z', 'research', 'gbif', 'verified', 0, 'Test Dataset', 'test-dataset', 'Test Publisher', 'test-publisher', 'public-domain', 1)`,
+      )
+      .run();
+    legacy.close();
+
+    const db = openSightingsDb(path);
+    const columns = db.prepare("PRAGMA table_info(sightings)").all() as { name: string }[];
+    expect(columns.some((c) => c.name === "photo_url")).toBe(true);
+
+    const [preExisting] = querySightings(db, {});
+    expect(preExisting).toMatchObject({ id: "pre-existing", photoUrl: undefined });
+
+    upsertSightings(db, [buildSighting({ id: "new", photoUrl: "https://example.com/p.jpg" })]);
+    expect(querySightings(db, {}).find((s) => s.id === "new")?.photoUrl).toBe("https://example.com/p.jpg");
   });
 });
 
