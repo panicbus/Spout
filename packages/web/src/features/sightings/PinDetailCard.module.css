@@ -18,6 +18,13 @@
   height: 34px;
   width: auto;
   margin-bottom: -0.15rem;
+  /* `.content` is a column flex container, whose default
+     `align-items: stretch` forces an `auto`-width flex child to fill
+     the row — stretching this image well past its real aspect ratio.
+     `.license` (text-align: center) still needs that stretch to span
+     full width, so this is overridden per-item here rather than by
+     changing `.content`'s align-items globally. */
+  align-self: flex-start;
 }
 
 .title {
