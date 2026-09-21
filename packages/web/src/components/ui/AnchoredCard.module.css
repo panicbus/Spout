@@ -10,21 +10,38 @@
   background: white;
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.28);
-  padding: 0.75rem 0.9rem 0.85rem;
+  /* No padding here — PinDetailCard's own .body owns it, so its photo
+     (when present) can sit flush with this card's top corners instead
+     of being inset by a padding this component would otherwise add.
+     Deliberately no overflow:hidden either: the photo's own top corners
+     already carry the matching 12px radius (see PinDetailCard.module.css's
+     .photo), so nothing needs clipping to look right — and clipping here
+     would also cut off .arrow below, which pokes out past this box on
+     purpose to form the connector. */
   box-sizing: border-box;
 }
 
 .closeButton {
   position: absolute;
-  top: 0.35rem;
-  right: 0.55rem;
+  top: 0.4rem;
+  right: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
   border: none;
-  background: none;
-  font-size: 1.35rem;
+  /* A card can now open with a full-bleed photo directly under this
+     button (PinDetailCard's photo sits flush with the card's top
+     corners, no padding above it) — a translucent backdrop keeps the ×
+     legible over any photo, not just the plain white body below it. */
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 50%;
+  font-size: 1.2rem;
   line-height: 1;
   cursor: pointer;
-  color: #888;
-  padding: 0.25rem;
+  color: #555;
+  padding: 0;
   z-index: 1;
 }
 

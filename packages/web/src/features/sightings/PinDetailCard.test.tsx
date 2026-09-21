@@ -214,7 +214,7 @@ describe("PinDetailCard", () => {
     );
   });
 
-  it("renders the license as its own line, separate from the dataset/publisher attribution line", () => {
+  it("renders the license inline in the same footer line as the dataset/publisher attribution, not as a separate line", () => {
     render(
       <PinDetailCard
         sighting={buildSighting({
@@ -230,10 +230,9 @@ describe("PinDetailCard", () => {
         onClose={() => {}}
       />,
     );
-    const licenseLine = screen.getByText(/License:/i).closest("p");
-    const attributionLine = screen.getByText(/Test Dataset/).closest("p");
-    expect(licenseLine).not.toBeNull();
-    expect(licenseLine).not.toBe(attributionLine);
+    const footerLine = screen.getByText(/Test Dataset/).closest("p");
+    expect(footerLine).not.toBeNull();
+    expect(footerLine).toHaveTextContent("Test Dataset via Test Publisher · License public-domain");
   });
 
   it("shows a 'view original' link inline with the dataset/publisher line when attributionUrl is present", () => {

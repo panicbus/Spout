@@ -88,51 +88,60 @@ export const PinDetailCard = forwardRef<HTMLDivElement, PinDetailCardProps>(func
             />
           )}
 
-          <div className={styles.titleRow}>
-            <img className={styles.speciesIcon} src={SPECIES_ICONS[sighting.species]} alt="" />
-            <h2 className={styles.title}>{SPECIES_LABELS[sighting.species]}</h2>
-          </div>
+          <div className={styles.body}>
+            <div className={styles.titleRow}>
+              <img className={styles.speciesIcon} src={SPECIES_ICONS[sighting.species]} alt="" />
+              <h2 className={styles.title}>{SPECIES_LABELS[sighting.species]}</h2>
+            </div>
 
-          <div className={styles.badges}>
-            <Badge tone={TIER_TONES[sighting.tier]} label={TIER_LABELS[sighting.tier]} />
-            <Badge
-              tone={sighting.verification === "verified" ? "ok" : "warning"}
-              label={sighting.verification === "verified" ? "Verified" : "Unverified — needs ID"}
-            />
-          </div>
+            <div className={styles.badges}>
+              <Badge tone={TIER_TONES[sighting.tier]} label={TIER_LABELS[sighting.tier]} />
+              <Badge
+                tone={sighting.verification === "verified" ? "ok" : "warning"}
+                label={sighting.verification === "verified" ? "Verified" : "Unverified — needs ID"}
+              />
+            </div>
 
-          <p className={styles.date}>Observed {formatObservedAt(sighting.observedAt)}</p>
+            <dl className={styles.meta}>
+              <div className={styles.metaRow}>
+                <dt>observed</dt>
+                <dd>{formatObservedAt(sighting.observedAt)}</dd>
+              </div>
+              {/* When obscured, `positionalUncertaintyMeters` is the
+                  geoprivacy obfuscation radius (e.g. GBIF's own
+                  coordinateUncertaintyInMeters, which is set to that radius
+                  specifically because the record's coordinate is
+                  deliberately randomized — see normalize/sighting.ts), not a
+                  genuine measurement/GPS precision figure. Kept out of this
+                  label/value list (which reads as measured facts) and folded
+                  into the "location approximate" note below instead, so it
+                  never reads as a precision claim it isn't. */}
+              {!sighting.coordinatesObscured && sighting.positionalUncertaintyMeters !== undefined && (
+                <div className={styles.metaRow}>
+                  <dt>accuracy</dt>
+                  <dd>{formatUncertainty(sighting.positionalUncertaintyMeters)}</dd>
+                </div>
+              )}
+            </dl>
 
-          {/* When obscured, `positionalUncertaintyMeters` is the
-              geoprivacy obfuscation radius (e.g. GBIF's own
-              coordinateUncertaintyInMeters, which is set to that radius
-              specifically because the record's coordinate is
-              deliberately randomized — see normalize/sighting.ts), not a
-              genuine measurement/GPS precision figure. Folded into the
-              one "location approximate" note rather than shown as its
-              own "Position accuracy" line, so it never reads as a
-              precision claim it isn't. */}
-          {sighting.coordinatesObscured ? (
-            <p className={styles.note}>
-              Location approximate — coordinates randomized to protect this species
-              {sighting.positionalUncertaintyMeters !== undefined
-                ? ` (true location is within ${formatUncertainty(sighting.positionalUncertaintyMeters)} of the pin).`
-                : "."}
-            </p>
-          ) : (
-            sighting.positionalUncertaintyMeters !== undefined && (
+            {sighting.coordinatesObscured && (
               <p className={styles.note}>
-                Position accuracy: {formatUncertainty(sighting.positionalUncertaintyMeters)}
+                Location approximate — coordinates randomized to protect this species
+                {sighting.positionalUncertaintyMeters !== undefined
+                  ? ` (true location is within ${formatUncertainty(sighting.positionalUncertaintyMeters)} of the pin).`
+                  : "."}
               </p>
-            )
-          )}
+            )}
 
-          {seasonalityNote(sighting.species) && (
-            <p className={styles.note}>{seasonalityNote(sighting.species)}</p>
-          )}
+            {seasonalityNote(sighting.species) && (
+              <p className={styles.note}>{seasonalityNote(sighting.species)}</p>
+            )}
 
-          <div className={styles.attribution}>
-            <p>
+            {sighting.attribution.citation && <p className={styles.citation}>{sighting.attribution.citation}</p>}
+
+            <div className={styles.divider} aria-hidden="true" />
+
+            <p className={styles.footer}>
               {sighting.attribution.datasetName} via {sighting.attribution.publisherName}
               {sighting.attribution.attributionUrl && (
                 <>
@@ -143,20 +152,16 @@ export const PinDetailCard = forwardRef<HTMLDivElement, PinDetailCardProps>(func
                   {")"}
                 </>
               )}
+              {" · License "}
+              {sighting.attribution.license.url ? (
+                <a href={sighting.attribution.license.url} target="_blank" rel="noopener noreferrer">
+                  {sighting.attribution.license.id}
+                </a>
+              ) : (
+                sighting.attribution.license.id
+              )}
             </p>
-            {sighting.attribution.citation && <p className={styles.citation}>{sighting.attribution.citation}</p>}
           </div>
-
-          <p className={styles.license}>
-            License:{" "}
-            {sighting.attribution.license.url ? (
-              <a href={sighting.attribution.license.url} target="_blank" rel="noopener noreferrer">
-                {sighting.attribution.license.id}
-              </a>
-            ) : (
-              sighting.attribution.license.id
-            )}
-          </p>
         </div>
       )}
     </AnchoredCard>
