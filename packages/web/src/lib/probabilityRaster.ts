@@ -10,8 +10,15 @@ export interface ProbabilityRasterImage {
 /** `[topLeft, topRight, bottomRight, bottomLeft]` — the corner order MapLibre's `image` source requires. */
 export type ImageCorners = [[number, number], [number, number], [number, number], [number, number]];
 
-/** Mirrors the blue→red ramp `ProbabilityLayer`'s old `circle-color` interpolate expression used, for visual continuity with prior rounds and with NOAA's own color scale. */
-const COLOR_STOPS: { stop: number; rgb: [number, number, number] }[] = [
+/**
+ * Mirrors the blue→red ramp `ProbabilityLayer`'s old `circle-color`
+ * interpolate expression used, for visual continuity with prior rounds
+ * and with NOAA's own color scale. Exported (not just a local const) so
+ * `ProbabilityLegend` can build its gradient from these exact stops
+ * instead of a hand-copied duplicate that could silently drift out of
+ * sync with what's actually rendered.
+ */
+export const COLOR_STOPS: { stop: number; rgb: [number, number, number] }[] = [
   { stop: 0, rgb: [27, 20, 100] }, // #1b1464
   { stop: 0.2, rgb: [65, 105, 225] }, // royalblue
   { stop: 0.4, rgb: [0, 255, 255] }, // cyan

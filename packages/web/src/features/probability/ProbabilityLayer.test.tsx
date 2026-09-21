@@ -179,4 +179,34 @@ describe("ProbabilityLayer", () => {
 
     expect(screen.queryByText(/probability/i)).not.toBeInTheDocument();
   });
+
+  it("shows a color legend explaining the probability scale once the grid has loaded", async () => {
+    vi.mocked(apiClient.fetchProbabilityGrid).mockResolvedValue(fakeGrid("2026-09-15"));
+
+    render(
+      <ProbabilityGridProvider>
+        <MapCanvas>
+          <ProbabilityLayer />
+        </MapCanvas>
+      </ProbabilityGridProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText(/Blue whale presence/)).toBeInTheDocument());
+    expect(screen.getByText("Low")).toBeInTheDocument();
+    expect(screen.getByText("High")).toBeInTheDocument();
+  });
+
+  it("renders no legend while the grid is still loading", () => {
+    vi.mocked(apiClient.fetchProbabilityGrid).mockReturnValue(new Promise(() => {}));
+
+    render(
+      <ProbabilityGridProvider>
+        <MapCanvas>
+          <ProbabilityLayer />
+        </MapCanvas>
+      </ProbabilityGridProvider>,
+    );
+
+    expect(screen.queryByText(/Blue whale presence/)).not.toBeInTheDocument();
+  });
 });

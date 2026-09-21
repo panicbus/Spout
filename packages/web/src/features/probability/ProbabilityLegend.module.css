@@ -1,0 +1,41 @@
+.legend {
+  /* Below MapLibre's NavigationControl (top-right — measured live at
+     ~97px tall, three stacked buttons plus its own margin, not the
+     ~29px a single button would suggest) so the two never overlap. */
+  position: absolute;
+  top: 6.5rem;
+  right: 0.75rem;
+  z-index: 1;
+  width: 132px;
+  padding: 0.5rem 0.6rem;
+  border-radius: 6px;
+  background: rgba(20, 20, 20, 0.6);
+  color: white;
+  pointer-events: none;
+}
+
+.title {
+  margin: 0 0 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.bar {
+  height: 8px;
+  border-radius: 4px;
+}
+
+.labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.2rem;
+  font-size: 0.65rem;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.note {
+  margin: 0.35rem 0 0;
+  font-size: 0.65rem;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.75);
+}

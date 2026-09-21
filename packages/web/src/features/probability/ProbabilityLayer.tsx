@@ -8,6 +8,7 @@ import { useProbabilityGrid } from "../../lib/ProbabilityGridContext.js";
 import { buildProbabilityRasterImage, imageCornersForBbox } from "../../lib/probabilityRaster.js";
 import { rasterImageToDataUrl } from "../../lib/rasterImageToDataUrl.js";
 import { SIGHTINGS_CLUSTERS_LAYER_ID } from "../sightings/SightingsLayer.js";
+import { ProbabilityLegend } from "./ProbabilityLegend.js";
 import styles from "./ProbabilityLayer.module.css";
 
 export const PROBABILITY_SOURCE_ID = "probability-grid";
@@ -106,10 +107,13 @@ export function ProbabilityLayer() {
   const { publisherName } = result.data.attribution;
 
   return (
-    <div className={styles.stampWrapper}>
-      <Stamp>
-        Blue whale probability — {publisherName}, {formatDateStamp(result.data.modelDate)}
-      </Stamp>
-    </div>
+    <>
+      <ProbabilityLegend />
+      <div className={styles.stampWrapper}>
+        <Stamp>
+          Blue whale probability — {publisherName}, {formatDateStamp(result.data.modelDate)}
+        </Stamp>
+      </div>
+    </>
   );
 }

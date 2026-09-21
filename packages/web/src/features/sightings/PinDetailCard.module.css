@@ -99,7 +99,7 @@
    solid top border — purely visual, so it carries no semantic markup. */
 .divider {
   height: 6px;
-  margin: 0.05rem 0;
+  margin: 0.4rem 0;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='6' viewBox='0 0 16 6'%3E%3Cpath d='M0 3 Q4 0 8 3 T16 3' stroke='%23bcd6dc' stroke-width='1.4' fill='none'/%3E%3C/svg%3E");
   background-repeat: repeat-x;
   background-size: 16px 6px;
@@ -109,5 +109,6 @@
   margin: 0;
   text-align: center;
   font-size: 0.72rem;
+  line-height: 1.5;
   color: #888;
 }

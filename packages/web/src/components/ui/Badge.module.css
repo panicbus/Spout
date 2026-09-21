@@ -3,10 +3,11 @@
   align-items: center;
   gap: 0.4em;
   font-size: 0.75rem;
-  padding: 0.25em 0.6em;
+  padding: 0.35em 0.6em;
   border-radius: 999px;
   background: var(--badge-bg, #eee);
   color: var(--badge-fg, #333);
+  border: 1px solid var(--badge-border, #ccc);
 }
 
 .dot {
@@ -20,19 +21,23 @@
 .badge[data-tone="ok"] {
   --badge-bg: #e3f6ea;
   --badge-fg: #1c7a3e;
+  --badge-border: #a8d9b8;
 }
 
 .badge[data-tone="warning"] {
   --badge-bg: #fdf1dc;
   --badge-fg: #9a5b00;
+  --badge-border: #f0cf95;
 }
 
 .badge[data-tone="error"] {
   --badge-bg: #fbe6e6;
   --badge-fg: #a3271f;
+  --badge-border: #f0b3b0;
 }
 
 .badge[data-tone="neutral"] {
   --badge-bg: #eceff1;
   --badge-fg: #4a5560;
+  --badge-border: #c7ced4;
 }
