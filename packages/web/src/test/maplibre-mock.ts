@@ -34,6 +34,10 @@ export interface MapInstanceMock {
   getLayer: ReturnType<typeof vi.fn>;
   /** Defaults to `{x: 0, y: 0}` — override per test via `mockReturnValue`/`mockImplementation` when a test cares about the actual projected pixel. */
   project: ReturnType<typeof vi.fn>;
+  /** Defaults to a detached `<div>` — its `getBoundingClientRect()` is all-zero under jsdom, like any unattached/unrendered element; override with `mockReturnValue({ getBoundingClientRect: () => ({...}) })` when a test needs a real container size. */
+  getContainer: ReturnType<typeof vi.fn>;
+  /** Defaults to `{lng: 0, lat: 0}` — override per test when a test cares about the actual unprojected coordinate. */
+  unproject: ReturnType<typeof vi.fn>;
   /** Defaults to `[]` (nothing hit) — override per test to simulate a click landing on a real feature. */
   queryRenderedFeatures: ReturnType<typeof vi.fn>;
   easeTo: ReturnType<typeof vi.fn>;
@@ -64,6 +68,8 @@ class MapMock implements MapInstanceMock {
   removeLayer: ReturnType<typeof vi.fn> = vi.fn();
   getLayer: ReturnType<typeof vi.fn> = vi.fn();
   project: ReturnType<typeof vi.fn> = vi.fn(() => ({ x: 0, y: 0 }));
+  getContainer: ReturnType<typeof vi.fn> = vi.fn(() => document.createElement("div"));
+  unproject: ReturnType<typeof vi.fn> = vi.fn(() => ({ lng: 0, lat: 0 }));
   queryRenderedFeatures: ReturnType<typeof vi.fn> = vi.fn(() => []);
   easeTo: ReturnType<typeof vi.fn> = vi.fn();
 

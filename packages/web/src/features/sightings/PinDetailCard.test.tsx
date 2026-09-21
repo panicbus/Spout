@@ -1,3 +1,4 @@
+import { createRef } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { buildSighting } from "@spout/contracts/fixtures.js";
 import { describe, expect, it, vi } from "vitest";
@@ -6,6 +7,12 @@ import { PinDetailCard } from "./PinDetailCard.js";
 const ANCHOR = { x: 100, y: 100 };
 
 describe("PinDetailCard", () => {
+  it("forwards ref through to the rendered card's root element", () => {
+    const ref = createRef<HTMLDivElement>();
+    render(<PinDetailCard ref={ref} sighting={buildSighting()} anchor={ANCHOR} onClose={() => {}} />);
+    expect(ref.current).toBe(screen.getByRole("dialog"));
+  });
+
   it("renders nothing when no sighting is selected", () => {
     render(<PinDetailCard sighting={null} anchor={ANCHOR} onClose={() => {}} />);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

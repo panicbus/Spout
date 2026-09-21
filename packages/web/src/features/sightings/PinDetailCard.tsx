@@ -1,4 +1,5 @@
 import { SPECIES_LABELS, type Sighting, type Species, type SourceTier } from "@spout/contracts";
+import { forwardRef } from "react";
 import { AnchoredCard } from "../../components/ui/AnchoredCard.js";
 import type { ProjectedPoint } from "../../components/map/useProjectedPoint.js";
 import { Badge, type BadgeTone } from "../../components/ui/Badge.js";
@@ -59,10 +60,19 @@ export interface PinDetailCardProps {
  * selected) and `sighting: Sighting` (a real tap) are both handled by
  * this one component — the caller (`SightingsLayer`) doesn't need its
  * own `open` boolean in sync with a separate selected-sighting value.
+ *
+ * Forwards `ref` through to `AnchoredCard`'s root element — `SightingsLayer`
+ * uses it (via `usePanCardIntoView`) to measure the real rendered card and
+ * pan the map so the whole thing ends up inside the viewport, not just the
+ * anchor point.
  */
-export function PinDetailCard({ sighting, anchor, onClose }: PinDetailCardProps) {
+export const PinDetailCard = forwardRef<HTMLDivElement, PinDetailCardProps>(function PinDetailCard(
+  { sighting, anchor, onClose },
+  ref,
+) {
   return (
     <AnchoredCard
+      ref={ref}
       open={sighting !== null}
       anchor={anchor}
       onClose={onClose}
@@ -78,8 +88,10 @@ export function PinDetailCard({ sighting, anchor, onClose }: PinDetailCardProps)
             />
           )}
 
-          <img className={styles.speciesIcon} src={SPECIES_ICONS[sighting.species]} alt="" />
-          <h2 className={styles.title}>{SPECIES_LABELS[sighting.species]}</h2>
+          <div className={styles.titleRow}>
+            <img className={styles.speciesIcon} src={SPECIES_ICONS[sighting.species]} alt="" />
+            <h2 className={styles.title}>{SPECIES_LABELS[sighting.species]}</h2>
+          </div>
 
           <div className={styles.badges}>
             <Badge tone={TIER_TONES[sighting.tier]} label={TIER_LABELS[sighting.tier]} />
@@ -145,4 +157,4 @@ export function PinDetailCard({ sighting, anchor, onClose }: PinDetailCardProps)
       )}
     </AnchoredCard>
   );
-}
+});

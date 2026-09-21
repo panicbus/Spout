@@ -1,9 +1,10 @@
 import type { AddLayerObject, GeoJSONSource, MapMouseEvent } from "maplibre-gl";
 import type { Sighting, TimeWindow } from "@spout/contracts";
 import type { Point } from "geojson";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMap } from "../../components/map/MapContext.js";
 import { useGeoJsonMapLayer } from "../../components/map/useGeoJsonMapLayer.js";
+import { usePanCardIntoView } from "../../components/map/usePanCardIntoView.js";
 import { useProjectedPoint } from "../../components/map/useProjectedPoint.js";
 import { sightingsToGeoJson } from "../../lib/sightingsGeoJson.js";
 import { useSightings } from "../../lib/useSightings.js";
@@ -255,5 +256,8 @@ export function SightingsLayer({ timeWindow }: SightingsLayerProps) {
   const selected = selection ? (lastData.find((sighting) => sighting.id === selection.id) ?? null) : null;
   const anchor = useProjectedPoint(map, selection?.lngLat ?? null);
 
-  return <PinDetailCard sighting={selected} anchor={anchor} onClose={() => setSelection(null)} />;
+  const cardRef = useRef<HTMLDivElement>(null);
+  usePanCardIntoView(map, cardRef, selection?.id ?? null);
+
+  return <PinDetailCard ref={cardRef} sighting={selected} anchor={anchor} onClose={() => setSelection(null)} />;
 }

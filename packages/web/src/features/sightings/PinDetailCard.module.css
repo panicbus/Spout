@@ -13,24 +13,24 @@
   margin: -0.1rem 0 0.1rem;
 }
 
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 .speciesIcon {
   display: block;
-  height: 34px;
+  height: 24px;
   width: auto;
-  margin-bottom: -0.15rem;
-  /* `.content` is a column flex container, whose default
-     `align-items: stretch` forces an `auto`-width flex child to fill
-     the row — stretching this image well past its real aspect ratio.
-     `.license` (text-align: center) still needs that stretch to span
-     full width, so this is overridden per-item here rather than by
-     changing `.content`'s align-items globally. */
-  align-self: flex-start;
+  flex: none;
 }
 
 .title {
   margin: 0;
   padding-right: 1.5rem;
   font-size: 1.05rem;
+  white-space: nowrap;
 }
 
 .badges {

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useEffect, useRef } from "react";
+import { forwardRef, useEffect, useRef } from "react";
 import styles from "./AnchoredCard.module.css";
 
 export interface AnchoredCardProps {
@@ -32,9 +32,19 @@ const GAP_ABOVE_ANCHOR = 14;
  * with its arrow, so very close to an edge the arrow no longer points
  * exactly at the pin. A per-pixel arrow-offset correction would fix that
  * but isn't worth the complexity for how rarely a real tap lands within
- * ~150px of the viewport edge.
+ * ~150px of the viewport edge. This clamp alone can't guarantee full
+ * containment vertically, though — the card's real height depends on its
+ * content (a photo, notes, attribution are all optional), which CSS
+ * positioning has no way to know ahead of render. `ref` (forwarded to
+ * this component's root element) is what lets a caller (`SightingsLayer`,
+ * via `usePanCardIntoView`) measure the real rendered card and pan the
+ * map itself so the whole thing — not just the anchor point — ends up
+ * inside the viewport.
  */
-export function AnchoredCard({ open, anchor, onClose, title, children }: AnchoredCardProps) {
+export const AnchoredCard = forwardRef<HTMLDivElement, AnchoredCardProps>(function AnchoredCard(
+  { open, anchor, onClose, title, children },
+  ref,
+) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
@@ -64,7 +74,14 @@ export function AnchoredCard({ open, anchor, onClose, title, children }: Anchore
   const top = Math.max(anchor.y - GAP_ABOVE_ANCHOR, VIEWPORT_MARGIN);
 
   return (
-    <div className={styles.card} style={{ left, top }} role="dialog" aria-label={title} data-testid="anchored-card">
+    <div
+      ref={ref}
+      className={styles.card}
+      style={{ left, top }}
+      role="dialog"
+      aria-label={title}
+      data-testid="anchored-card"
+    >
       <button type="button" ref={closeButtonRef} className={styles.closeButton} onClick={onClose} aria-label="Close">
         ×
       </button>
@@ -72,4 +89,4 @@ export function AnchoredCard({ open, anchor, onClose, title, children }: Anchore
       <div className={styles.arrow} />
     </div>
   );
-}
+});

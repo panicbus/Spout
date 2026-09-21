@@ -1,9 +1,20 @@
+import { createRef } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { AnchoredCard } from "./AnchoredCard.js";
 
 describe("AnchoredCard", () => {
+  it("forwards ref to the card's own root element — SightingsLayer measures it to pan the map into view", () => {
+    const ref = createRef<HTMLDivElement>();
+    render(
+      <AnchoredCard ref={ref} open anchor={{ x: 100, y: 100 }} onClose={() => {}}>
+        <p>content</p>
+      </AnchoredCard>,
+    );
+    expect(ref.current).toBe(screen.getByTestId("anchored-card"));
+  });
+
   it("renders nothing when closed", () => {
     render(
       <AnchoredCard open={false} anchor={{ x: 100, y: 100 }} onClose={() => {}}>
