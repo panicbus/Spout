@@ -38,6 +38,20 @@ describe("PinDetailCard", () => {
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
   });
 
+  it("shows a species icon distinct per species, presentational (no redundant alt text next to the visible heading)", () => {
+    const { container, rerender } = render(
+      <PinDetailCard sighting={buildSighting({ species: "orca" })} anchor={ANCHOR} onClose={() => {}} />,
+    );
+    const orcaIconSrc = container.querySelector("img[alt='']")?.getAttribute("src");
+    expect(orcaIconSrc).toBeTruthy();
+
+    rerender(<PinDetailCard sighting={buildSighting({ species: "blue-whale" })} anchor={ANCHOR} onClose={() => {}} />);
+    const blueIconSrc = container.querySelector("img[alt='']")?.getAttribute("src");
+
+    expect(blueIconSrc).toBeTruthy();
+    expect(blueIconSrc).not.toBe(orcaIconSrc);
+  });
+
   it("shows a tier badge", () => {
     render(<PinDetailCard sighting={buildSighting({ tier: "research" })} anchor={ANCHOR} onClose={() => {}} />);
     expect(screen.getByText("Research-grade")).toBeInTheDocument();

@@ -1,10 +1,29 @@
-import { SPECIES_LABELS, type Sighting, type SourceTier } from "@spout/contracts";
+import { SPECIES_LABELS, type Sighting, type Species, type SourceTier } from "@spout/contracts";
 import { AnchoredCard } from "../../components/ui/AnchoredCard.js";
 import type { ProjectedPoint } from "../../components/map/useProjectedPoint.js";
 import { Badge, type BadgeTone } from "../../components/ui/Badge.js";
+import blueWhaleIcon from "../../assets/species/blue-whale.png";
+import grayWhaleIcon from "../../assets/species/gray-whale.png";
+import humpbackWhaleIcon from "../../assets/species/humpback-whale.png";
+import orcaIcon from "../../assets/species/orca.png";
 import { formatObservedAt } from "../../lib/dateFormat.js";
 import { seasonalityNote } from "../../lib/seasonality.js";
 import styles from "./PinDetailCard.module.css";
+
+/**
+ * User-supplied illustrations, not this project's own hand-drawn SVG
+ * attempts — those didn't hold up at real card size after two review
+ * rounds. Cropped per-species (connected-component isolation, not a
+ * blind rectangle — some tails/fins crossed the source sheet's grid
+ * lines) from the user's own ChatGPT-generated reference sheet, with the
+ * white background keyed to transparent.
+ */
+const SPECIES_ICONS: Record<Species, string> = {
+  "blue-whale": blueWhaleIcon,
+  "humpback-whale": humpbackWhaleIcon,
+  "gray-whale": grayWhaleIcon,
+  orca: orcaIcon,
+};
 
 const TIER_LABELS: Record<SourceTier, string> = {
   research: "Research-grade",
@@ -40,10 +59,6 @@ export interface PinDetailCardProps {
  * selected) and `sighting: Sighting` (a real tap) are both handled by
  * this one component — the caller (`SightingsLayer`) doesn't need its
  * own `open` boolean in sync with a separate selected-sighting value.
- *
- * The top-left species icon slot is deliberately unpopulated for now —
- * pending a real icon set the user is reviewing separately; wiring one
- * in prematurely would mean redoing this layout twice.
  */
 export function PinDetailCard({ sighting, anchor, onClose }: PinDetailCardProps) {
   return (
@@ -63,6 +78,7 @@ export function PinDetailCard({ sighting, anchor, onClose }: PinDetailCardProps)
             />
           )}
 
+          <img className={styles.speciesIcon} src={SPECIES_ICONS[sighting.species]} alt="" />
           <h2 className={styles.title}>{SPECIES_LABELS[sighting.species]}</h2>
 
           <div className={styles.badges}>
