@@ -1,6 +1,6 @@
 import { Map as MapLibreMap, NavigationControl } from "maplibre-gl";
 import { useCallback, useEffect, useState } from "react";
-import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM, MAP_STYLE_URL } from "../../lib/mapConfig.js";
+import { DEFAULT_MAP_BOUNDS, DEFAULT_MAP_FIT_OPTIONS, MAP_STYLE_URL } from "../../lib/mapConfig.js";
 
 /**
  * Owns the MapLibre GL map's full lifecycle: construction against a
@@ -22,8 +22,8 @@ export function useMapInstance() {
     const instance = new MapLibreMap({
       container,
       style: MAP_STYLE_URL,
-      center: DEFAULT_MAP_CENTER,
-      zoom: DEFAULT_MAP_ZOOM,
+      bounds: DEFAULT_MAP_BOUNDS,
+      fitBoundsOptions: DEFAULT_MAP_FIT_OPTIONS,
     });
     instance.addControl(new NavigationControl(), "top-right");
 

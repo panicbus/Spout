@@ -1,6 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
-import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM, MAP_STYLE_URL } from "../../lib/mapConfig.js";
+import { DEFAULT_MAP_BOUNDS, DEFAULT_MAP_FIT_OPTIONS, MAP_STYLE_URL } from "../../lib/mapConfig.js";
 import { mapInstances, resetMaplibreMock } from "../../test/maplibre-mock.js";
 import { useMapInstance } from "./useMapInstance.js";
 
@@ -12,7 +12,7 @@ describe("useMapInstance", () => {
     expect(mapInstances).toHaveLength(0);
   });
 
-  it("constructs the map against the container, centered on the California coast", () => {
+  it("constructs the map against the container, fit to the California coast bbox", () => {
     const { result } = renderHook(() => useMapInstance());
     const container = document.createElement("div");
 
@@ -22,8 +22,8 @@ describe("useMapInstance", () => {
     expect(mapInstances[0]?.options).toMatchObject({
       container,
       style: MAP_STYLE_URL,
-      center: DEFAULT_MAP_CENTER,
-      zoom: DEFAULT_MAP_ZOOM,
+      bounds: DEFAULT_MAP_BOUNDS,
+      fitBoundsOptions: DEFAULT_MAP_FIT_OPTIONS,
     });
   });
 
