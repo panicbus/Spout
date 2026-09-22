@@ -62,13 +62,9 @@ describe("fetchProbabilityGrid", () => {
     expect(ProbabilityGridSchema.parse(grid).modelDate).toBe("2026-09-15");
   });
 
-  it("rejects when the API returns 503 (no data fetched yet upstream)", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(jsonResponse({ error: "unavailable" }, 503)),
-    );
-    await expect(fetchProbabilityGrid("http://localhost:8787")).rejects.toThrow();
-  });
+  // Non-ok-status and schema-validation rejection are shared
+  // `fetchAndValidate` behavior, already proven once in fetchHealth's
+  // tests above — every fetch* function routes through the same helper.
 });
 
 describe("fetchSightings", () => {
@@ -95,10 +91,5 @@ describe("fetchSightings", () => {
     expect(mockFetch).toHaveBeenCalledWith(
       "http://localhost:8787/api/sightings?species=orca&window=12m",
     );
-  });
-
-  it("rejects when a returned record fails schema validation", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse([{ id: "broken" }])));
-    await expect(fetchSightings({}, "http://localhost:8787")).rejects.toThrow();
   });
 });

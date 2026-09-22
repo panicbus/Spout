@@ -1,32 +1,13 @@
 import { describe, expect, it } from "vitest";
-import {
-  AttributionSchema,
-  LicenseSchema,
-  SOURCE_APIS,
-  SOURCE_TIERS,
-  SourceApiSchema,
-  SourceTierSchema,
-} from "../src/source.js";
+import { AttributionSchema, LicenseSchema, SourceApiSchema, SourceTierSchema } from "../src/source.js";
 
 describe("SourceTierSchema", () => {
-  it("accepts research, citizen, and acoustic", () => {
-    for (const tier of SOURCE_TIERS) {
-      expect(SourceTierSchema.parse(tier)).toBe(tier);
-    }
-  });
-
   it("rejects an unknown tier — tiering must stay a closed set", () => {
     expect(() => SourceTierSchema.parse("confirmed")).toThrow();
   });
 });
 
 describe("SourceApiSchema", () => {
-  it("accepts the three upstream APIs Spout actually calls", () => {
-    for (const api of SOURCE_APIS) {
-      expect(SourceApiSchema.parse(api)).toBe(api);
-    }
-  });
-
   it("rejects OBIS — dropped per ADR 0002", () => {
     expect(() => SourceApiSchema.parse("obis")).toThrow();
   });

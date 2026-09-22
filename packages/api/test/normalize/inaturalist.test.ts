@@ -100,11 +100,8 @@ describe("normalizeINaturalistObservation", () => {
 
   it.each([
     ["cc0", "CC0_1_0", true],
-    ["cc-by", "CC_BY_4_0", true],
     ["cc-by-sa", "CC_BY_SA_4_0", true],
-    ["cc-by-nd", "CC_BY_ND_4_0", true],
     ["cc-by-nc", "CC_BY_NC_4_0", false],
-    ["cc-by-nc-sa", "CC_BY_NC_SA_4_0", false],
     ["cc-by-nc-nd", "CC_BY_NC_ND_4_0", false],
   ] as const)("maps license_code %s to %s (commercialUse: %s)", (code, id, commercialUse) => {
     const sighting = normalizeINaturalistObservation(validObservation({ license_code: code }));

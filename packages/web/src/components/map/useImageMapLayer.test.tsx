@@ -34,17 +34,18 @@ function renderHarness(result: FetchState<{ url: string }>, beforeId?: string) {
   );
 }
 
+// Load-gating and unmount teardown are useMapLayerLifecycle's own behavior
+// (see its test file) — this file only covers what useImageMapLayer adds:
+// the addSource/updateImage choice and beforeId placement.
 describe("useImageMapLayer", () => {
   beforeEach(() => {
     resetMaplibreMock();
   });
 
-  it("does not add the source/layer until the map's 'load' event fires", async () => {
+  it("adds the source/layer once the map's 'load' event fires", async () => {
     renderHarness({ state: "ok", data: { url: "data:image/png;base64,abc" } });
     const map = mapInstances[0]!;
     await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
-
-    expect(map.addSource).not.toHaveBeenCalled();
 
     map.trigger("load");
 
@@ -67,28 +68,6 @@ describe("useImageMapLayer", () => {
 
     expect(map.addSource).not.toHaveBeenCalled();
     expect(updateImage).toHaveBeenCalledWith({ url: "data:image/png;base64,abc", coordinates: COORDINATES });
-  });
-
-  it("removes the layer and source on unmount", async () => {
-    const { unmount } = renderHarness({ state: "ok", data: { url: "data:image/png;base64,abc" } });
-    const map = mapInstances[0]!;
-    await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
-    map.getLayer.mockReturnValue({ id: RASTER_LAYER.id });
-    map.getSource.mockReturnValue({ updateImage: vi.fn() });
-    map.trigger("load");
-
-    unmount();
-
-    expect(map.removeLayer).toHaveBeenCalledWith(RASTER_LAYER.id);
-    expect(map.removeSource).toHaveBeenCalledWith(SOURCE_ID);
-  });
-
-  it("does nothing while the fetch is still loading", () => {
-    renderHarness({ state: "loading" });
-    const map = mapInstances[0]!;
-    map.trigger("load");
-
-    expect(map.addSource).not.toHaveBeenCalled();
   });
 
   it("inserts the layer below beforeId when that layer already exists on the map", async () => {

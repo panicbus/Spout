@@ -93,7 +93,7 @@ describe("SightingsLayer", () => {
     await waitFor(() => expect(apiClient.fetchSightings).toHaveBeenCalledWith({ window: "90d" }));
   });
 
-  it("colors unclustered points by tier via a match expression on the tier property", async () => {
+  it("the points layer's paint expression encodes every ADR 0002/0003 visual requirement: tier color, obscured/citizen radius, and verification/age opacity", async () => {
     vi.mocked(apiClient.fetchSightings).mockResolvedValue([buildSighting()]);
 
     render(
@@ -108,99 +108,32 @@ describe("SightingsLayer", () => {
     const pointsLayerCall = map.addLayer.mock.calls.find(
       (call: unknown[]) => (call[0] as { id: string }).id === SIGHTINGS_POINTS_LAYER_ID,
     );
-    const paint = (pointsLayerCall?.[0] as { paint: { "circle-color": unknown[] } }).paint;
-    expect(paint["circle-color"]).toEqual(
-      expect.arrayContaining(["match", ["get", "tier"], "research"]),
-    );
-  });
+    const paint = (
+      pointsLayerCall?.[0] as {
+        paint: { "circle-color": unknown[]; "circle-radius": unknown[]; "circle-opacity": unknown[][] };
+      }
+    ).paint;
 
-  it("fades unverified citizen reports rather than rendering them identically to confirmed data (spec.md / ADR 0002)", async () => {
-    vi.mocked(apiClient.fetchSightings).mockResolvedValue([buildSighting()]);
+    // Tier color (spec.md).
+    expect(paint["circle-color"]).toEqual(expect.arrayContaining(["match", ["get", "tier"], "research"]));
 
-    render(
-      <MapCanvas>
-        <SightingsLayer timeWindow="30d" />
-      </MapCanvas>,
-    );
-    const map = mapInstances[0]!;
-    await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
-    map.trigger("load");
-
-    const pointsLayerCall = map.addLayer.mock.calls.find(
-      (call: unknown[]) => (call[0] as { id: string }).id === SIGHTINGS_POINTS_LAYER_ID,
-    );
-    const paint = (pointsLayerCall?.[0] as { paint: { "circle-opacity": unknown[] } }).paint;
-    // circle-opacity branches on verification, then applies an age fade
-    // within each branch (see the crossover-safety test below for why
-    // that fade can't just be a flat multiply) — assert on the branch
-    // condition specifically rather than the whole tree.
-    expect(paint["circle-opacity"]).toEqual(
-      expect.arrayContaining(["case", ["==", ["get", "verification"], "unverified"]]),
-    );
-  });
-
-  it("renders geoprivacy-obscured coordinates as a larger halo instead of a precise pin (spec.md / ADR 0002)", async () => {
-    vi.mocked(apiClient.fetchSightings).mockResolvedValue([buildSighting()]);
-
-    render(
-      <MapCanvas>
-        <SightingsLayer timeWindow="30d" />
-      </MapCanvas>,
-    );
-    const map = mapInstances[0]!;
-    await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
-    map.trigger("load");
-
-    const pointsLayerCall = map.addLayer.mock.calls.find(
-      (call: unknown[]) => (call[0] as { id: string }).id === SIGHTINGS_POINTS_LAYER_ID,
-    );
-    const paint = (pointsLayerCall?.[0] as { paint: { "circle-radius": unknown[] } }).paint;
-    expect(paint["circle-radius"]).toEqual(
-      expect.arrayContaining(["case", ["get", "coordinatesObscured"]]),
-    );
-  });
-
-  it("renders citizen-report pins bigger than the default so they're actually noticeable against the probability raster", async () => {
-    vi.mocked(apiClient.fetchSightings).mockResolvedValue([buildSighting()]);
-
-    render(
-      <MapCanvas>
-        <SightingsLayer timeWindow="30d" />
-      </MapCanvas>,
-    );
-    const map = mapInstances[0]!;
-    await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
-    map.trigger("load");
-
-    const pointsLayerCall = map.addLayer.mock.calls.find(
-      (call: unknown[]) => (call[0] as { id: string }).id === SIGHTINGS_POINTS_LAYER_ID,
-    );
-    const paint = (pointsLayerCall?.[0] as { paint: { "circle-radius": unknown[] } }).paint;
+    // Obscured coordinates render as a larger halo, and citizen-tier pins
+    // are sized up from the default — both spec.md/ADR 0002 requirements
+    // live in the same circle-radius expression.
+    expect(paint["circle-radius"]).toEqual(expect.arrayContaining(["case", ["get", "coordinatesObscured"]]));
     expect(paint["circle-radius"]).toEqual(
       expect.arrayContaining([expect.arrayContaining(["==", ["get", "tier"], "citizen"])]),
     );
-  });
 
-  it("fades older reports via a match expression on the ageBucket property, so recency reads on the map itself (ADR 0003)", async () => {
-    vi.mocked(apiClient.fetchSightings).mockResolvedValue([buildSighting()]);
-
-    render(
-      <MapCanvas>
-        <SightingsLayer timeWindow="30d" />
-      </MapCanvas>,
+    // circle-opacity branches on verification (unverified must never
+    // render identically to confirmed data), then applies an age fade
+    // within each branch (ADR 0003) — both the unverified branch
+    // (index 2) and the verified branch (index 3) key off the same
+    // ageBucket match expression; checking the unverified branch (one
+    // level shallower) covers both.
+    expect(paint["circle-opacity"]).toEqual(
+      expect.arrayContaining(["case", ["==", ["get", "verification"], "unverified"]]),
     );
-    const map = mapInstances[0]!;
-    await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
-    map.trigger("load");
-
-    const pointsLayerCall = map.addLayer.mock.calls.find(
-      (call: unknown[]) => (call[0] as { id: string }).id === SIGHTINGS_POINTS_LAYER_ID,
-    );
-    const paint = (pointsLayerCall?.[0] as { paint: { "circle-opacity": unknown[][] } }).paint;
-    // Both the unverified branch (index 2: ["*", factor, ageExpr]) and the
-    // verified branch (index 3: ["max", floor, ["*", factor, ageExpr]])
-    // key off the same ageBucket match expression — check the unverified
-    // branch, which carries it one level shallower.
     expect(paint["circle-opacity"][2]).toEqual(
       expect.arrayContaining([expect.arrayContaining(["match", ["get", "ageBucket"]])]),
     );

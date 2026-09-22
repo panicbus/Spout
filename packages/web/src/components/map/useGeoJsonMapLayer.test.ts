@@ -15,54 +15,12 @@ function fakeGeoJson(n: number) {
   return { type: "FeatureCollection" as const, features: [], meta: n };
 }
 
+// Load-gating (waits for 'load', applies immediately if already loaded,
+// no-ops while data is undefined/loading) and unmount teardown are all
+// useMapLayerLifecycle's own behavior — see its test file. This file only
+// covers what useGeoJsonMapLayer adds on top of that shared skeleton.
 describe("useGeoJsonMapLayer", () => {
   beforeEach(() => resetMaplibreMock());
-
-  it("does nothing while the fetch is still loading", () => {
-    const map = new MapMock({}) as unknown as import("maplibre-gl").Map;
-    renderHook(() =>
-      useGeoJsonMapLayer(map, { state: "loading" }, () => fakeGeoJson(1), {
-        sourceId: "test-source",
-        layers: [testLayer],
-      }),
-    );
-    expect(mapInstances[0]?.addSource).not.toHaveBeenCalled();
-  });
-
-  it("waits for the map's 'load' event before adding the source and layers", () => {
-    const map = new MapMock({}) as unknown as import("maplibre-gl").Map;
-    renderHook(() =>
-      useGeoJsonMapLayer(map, { state: "ok", data: 1 }, () => fakeGeoJson(1), {
-        sourceId: "test-source",
-        layers: [testLayer],
-      }),
-    );
-    const mock = mapInstances[0]!;
-    expect(mock.once).toHaveBeenCalledWith("load", expect.any(Function));
-    expect(mock.addSource).not.toHaveBeenCalled();
-
-    act(() => mock.trigger("load"));
-
-    expect(mock.addSource).toHaveBeenCalledWith(
-      "test-source",
-      expect.objectContaining({ type: "geojson" }),
-    );
-    expect(mock.addLayer).toHaveBeenCalledWith(testLayer);
-  });
-
-  it("adds immediately if the map is already loaded", () => {
-    const map = new MapMock({}) as unknown as import("maplibre-gl").Map;
-    (map as unknown as { loaded: ReturnType<typeof vi.fn> }).loaded = vi.fn(() => true);
-
-    renderHook(() =>
-      useGeoJsonMapLayer(map, { state: "ok", data: 1 }, () => fakeGeoJson(1), {
-        sourceId: "test-source",
-        layers: [testLayer],
-      }),
-    );
-
-    expect(mapInstances[0]?.addSource).toHaveBeenCalled();
-  });
 
   it("passes sourceOptions through to addSource (e.g. clustering)", () => {
     const map = new MapMock({}) as unknown as import("maplibre-gl").Map;
@@ -95,23 +53,5 @@ describe("useGeoJsonMapLayer", () => {
 
     expect(mapInstances[0]?.addSource).not.toHaveBeenCalled();
     expect(setData).toHaveBeenCalledWith(fakeGeoJson(1));
-  });
-
-  it("removes all layers and the source on unmount", () => {
-    const map = new MapMock({}) as unknown as import("maplibre-gl").Map;
-    const { unmount } = renderHook(() =>
-      useGeoJsonMapLayer(map, { state: "ok", data: 1 }, () => fakeGeoJson(1), {
-        sourceId: "test-source",
-        layers: [testLayer],
-      }),
-    );
-    mapInstances[0]!.getLayer.mockReturnValue({ id: "test-layer" });
-    mapInstances[0]!.getSource.mockReturnValue({ setData: vi.fn() });
-    act(() => mapInstances[0]!.trigger("load"));
-
-    unmount();
-
-    expect(mapInstances[0]?.removeLayer).toHaveBeenCalledWith("test-layer");
-    expect(mapInstances[0]?.removeSource).toHaveBeenCalledWith("test-source");
   });
 });

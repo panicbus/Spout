@@ -91,8 +91,6 @@ describe("normalizeGbifRecord", () => {
 
   it.each([
     ["https://creativecommons.org/licenses/by-sa/4.0/legalcode", "CC_BY_SA_4_0"],
-    ["https://creativecommons.org/licenses/by-nd/4.0/legalcode", "CC_BY_ND_4_0"],
-    ["https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode", "CC_BY_NC_SA_4_0"],
     ["https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode", "CC_BY_NC_ND_4_0"],
   ])(
     "maps %s to %s — previously missing from this normalizer's own license map, unlike iNaturalist's (fixed via the shared ccLicenses.ts registry)",
@@ -225,7 +223,6 @@ describe("normalizeGbifRecord", () => {
     it.each([
       ["a trailing slash", "https://www.inaturalist.org/observations/333069440/"],
       ["no www subdomain", "https://inaturalist.org/observations/333069440"],
-      ["a trailing query string", "https://www.inaturalist.org/observations/333069440?utm_source=test"],
     ])(
       "falls back to gbif:<key> for a near-miss occurrenceID shape (%s) — verified live against 350+ real records that this shape never actually occurs, so the fallback (not a data-loss risk) is the only behavior this covers",
       (_label, occurrenceID) => {

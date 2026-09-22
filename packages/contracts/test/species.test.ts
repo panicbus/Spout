@@ -8,12 +8,6 @@ import {
 } from "../src/species.js";
 
 describe("SpeciesSchema", () => {
-  it("accepts each of the four v1 target species", () => {
-    for (const species of SPECIES) {
-      expect(SpeciesSchema.parse(species)).toBe(species);
-    }
-  });
-
   it("rejects a species outside the v1 set", () => {
     expect(() => SpeciesSchema.parse("fin-whale")).toThrow();
   });

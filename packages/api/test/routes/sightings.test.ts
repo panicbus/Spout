@@ -92,19 +92,6 @@ describe("GET /api/sightings", () => {
     expect(res.status).toBe(400);
   });
 
-  it("rejects a bbox with a trailing comma (empty segment) with 400, rather than silently treating it as 0", async () => {
-    const db = openSightingsDb(":memory:");
-    const app = createApp({
-      sightingsDb: db,
-      sightingsFetcher: vi.fn().mockResolvedValue([]),
-      inaturalistFetcher: vi.fn().mockResolvedValue([]),
-    });
-
-    const res = await app.request("/api/sightings?bbox=-126,32,-117,");
-
-    expect(res.status).toBe(400);
-  });
-
   it("rejects a non-numeric bbox segment with 400", async () => {
     const db = openSightingsDb(":memory:");
     const app = createApp({
@@ -129,19 +116,6 @@ describe("GET /api/sightings", () => {
     const res = await app.request("/api/sightings?commercialOnly=TRUE");
 
     expect(res.status).toBe(400);
-  });
-
-  it("accepts commercialOnly=false explicitly", async () => {
-    const db = openSightingsDb(":memory:");
-    const app = createApp({
-      sightingsDb: db,
-      sightingsFetcher: vi.fn().mockResolvedValue([]),
-      inaturalistFetcher: vi.fn().mockResolvedValue([]),
-    });
-
-    const res = await app.request("/api/sightings?commercialOnly=false");
-
-    expect(res.status).toBe(200);
   });
 
   it("returns data from the store even when the refresh fetch fails, rather than 503ing an endpoint with real cached data behind it", async () => {

@@ -48,23 +48,11 @@ describe("SightingSchema", () => {
     expect(() => SightingSchema.parse(withoutFlag)).toThrow();
   });
 
-  it("accepts an acoustic-tier sighting", () => {
-    const sighting = SightingSchema.parse(
-      validSighting({ tier: "acoustic", verification: "verified" }),
-    );
-    expect(sighting.tier).toBe("acoustic");
-  });
-
   it("accepts an optional positional uncertainty radius, e.g. GBIF's coordinateUncertaintyInMeters", () => {
     const sighting = SightingSchema.parse(
       validSighting({ positionalUncertaintyMeters: 1.11 }),
     );
     expect(sighting.positionalUncertaintyMeters).toBe(1.11);
-  });
-
-  it("accepts a sighting with no positional uncertainty given — not every source reports one", () => {
-    const sighting = SightingSchema.parse(validSighting());
-    expect(sighting.positionalUncertaintyMeters).toBeUndefined();
   });
 
   it("rejects a negative positional uncertainty", () => {

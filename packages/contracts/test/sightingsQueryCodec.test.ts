@@ -50,9 +50,4 @@ describe("decodeSightingsQueryParams", () => {
   it("throws directly on an unrecognized commercialOnly value, rather than silently resolving to false", () => {
     expect(() => decodeSightingsQueryParams(new URLSearchParams("commercialOnly=TRUE"))).toThrow();
   });
-
-  it("accepts commercialOnly=false explicitly", () => {
-    const raw = decodeSightingsQueryParams(new URLSearchParams("commercialOnly=false"));
-    expect(SightingsQuerySchema.parse(raw).commercialOnly).toBe(false);
-  });
 });

@@ -71,25 +71,13 @@ describe("DataCreditsPanel", () => {
     );
   });
 
-  it("discloses the model's real grid resolution honestly", () => {
+  it("discloses the model's grid resolution, credits GBIF/iNaturalist for sightings, and credits the map tile provider", () => {
     vi.mocked(apiClient.fetchProbabilityGrid).mockReturnValue(new Promise(() => {}));
     renderPanel();
     fireEvent.click(screen.getByRole("button", { name: /data sources/i }));
     expect(screen.getByText(/0\.1/)).toBeInTheDocument();
-  });
-
-  it("credits GBIF and iNaturalist for the sightings data", () => {
-    vi.mocked(apiClient.fetchProbabilityGrid).mockReturnValue(new Promise(() => {}));
-    renderPanel();
-    fireEvent.click(screen.getByRole("button", { name: /data sources/i }));
     expect(screen.getByText(/GBIF/)).toBeInTheDocument();
     expect(screen.getByText(/iNaturalist/)).toBeInTheDocument();
-  });
-
-  it("credits the map tile provider", () => {
-    vi.mocked(apiClient.fetchProbabilityGrid).mockReturnValue(new Promise(() => {}));
-    renderPanel();
-    fireEvent.click(screen.getByRole("button", { name: /data sources/i }));
     expect(screen.getByText(/OpenFreeMap/)).toBeInTheDocument();
   });
 

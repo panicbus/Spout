@@ -115,7 +115,7 @@ describe("ProbabilityLayer", () => {
     expect(map.removeSource).toHaveBeenCalledWith(PROBABILITY_SOURCE_ID);
   });
 
-  it("shows a model-date stamp once the grid has loaded", async () => {
+  it("shows a model-date stamp with the publisher's name once the grid has loaded — ADR 0002 requires NOAA's credit to be visible, not deferred silently to R4", async () => {
     vi.mocked(apiClient.fetchProbabilityGrid).mockResolvedValue(fakeGrid("2026-09-15"));
 
     render(
@@ -127,20 +127,7 @@ describe("ProbabilityLayer", () => {
     );
 
     await waitFor(() => expect(screen.getByText(/Sep 15, 2026/)).toBeInTheDocument());
-  });
-
-  it("includes the data publisher's name in the stamp — ADR 0002 requires NOAA's credit to be visible, not deferred silently to R4", async () => {
-    vi.mocked(apiClient.fetchProbabilityGrid).mockResolvedValue(fakeGrid("2026-09-15"));
-
-    render(
-      <ProbabilityGridProvider>
-        <MapCanvas>
-          <ProbabilityLayer />
-        </MapCanvas>
-      </ProbabilityGridProvider>,
-    );
-
-    await waitFor(() => expect(screen.getByText(/NOAA WhaleWatch 2.0/)).toBeInTheDocument());
+    expect(screen.getByText(/NOAA WhaleWatch 2.0/)).toBeInTheDocument();
   });
 
   it("inserts the probability layer below the sightings layer when sightings already loaded first (never lets the raster bury the pins, regardless of which fetch resolves first)", async () => {
@@ -166,20 +153,6 @@ describe("ProbabilityLayer", () => {
     );
   });
 
-  it("renders no stamp while the grid is still loading", () => {
-    vi.mocked(apiClient.fetchProbabilityGrid).mockReturnValue(new Promise(() => {}));
-
-    render(
-      <ProbabilityGridProvider>
-        <MapCanvas>
-          <ProbabilityLayer />
-        </MapCanvas>
-      </ProbabilityGridProvider>,
-    );
-
-    expect(screen.queryByText(/probability/i)).not.toBeInTheDocument();
-  });
-
   it("shows a color legend explaining the probability scale once the grid has loaded", async () => {
     vi.mocked(apiClient.fetchProbabilityGrid).mockResolvedValue(fakeGrid("2026-09-15"));
 
@@ -196,7 +169,7 @@ describe("ProbabilityLayer", () => {
     expect(screen.getByText("High")).toBeInTheDocument();
   });
 
-  it("renders no legend while the grid is still loading", () => {
+  it("renders no stamp or legend while the grid is still loading", () => {
     vi.mocked(apiClient.fetchProbabilityGrid).mockReturnValue(new Promise(() => {}));
 
     render(
@@ -207,6 +180,7 @@ describe("ProbabilityLayer", () => {
       </ProbabilityGridProvider>,
     );
 
+    expect(screen.queryByText(/probability/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Blue whale presence/)).not.toBeInTheDocument();
   });
 });

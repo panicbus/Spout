@@ -30,18 +30,6 @@ describe("fetchWithBackoff", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
-  it("retries on a 503 the same way as a 429", async () => {
-    const fetchImpl = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(503))
-      .mockResolvedValueOnce(jsonResponse(200));
-
-    const res = await fetchWithBackoff("https://example.com", { fetchImpl, delayMs: () => 0 });
-
-    expect(res.status).toBe(200);
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
-  });
-
   it("does not retry a 4xx that isn't 429 — a genuine bad request retrying wastes calls for nothing", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(400));
 

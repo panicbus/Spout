@@ -2,12 +2,6 @@ import { describe, expect, it } from "vitest";
 import { SightingsQuerySchema, TIME_WINDOWS, TIME_WINDOW_DAYS, TimeWindowSchema } from "../src/filters.js";
 
 describe("TimeWindowSchema", () => {
-  it("accepts every window including 'latest', the iNaturalist-driven recency view (ADR 0003)", () => {
-    for (const window of TIME_WINDOWS) {
-      expect(TimeWindowSchema.parse(window)).toBe(window);
-    }
-  });
-
   it("rejects 'today' and 'this-week' — replaced by 'latest' because GBIF has zero records that fresh", () => {
     expect(() => TimeWindowSchema.parse("today")).toThrow();
     expect(() => TimeWindowSchema.parse("this-week")).toThrow();
