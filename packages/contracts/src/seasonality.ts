@@ -29,6 +29,16 @@ const SpeciesSeasonalitySchema = z.object({
   share: z.number().min(0).max(1).optional(),
   /** How many all-cetacean reports the share was computed from — the same number the suppression threshold is judged against, surfaced so the UI can show its work rather than asserting confidence silently. */
   sampleSize: z.number().int().nonnegative(),
+  /**
+   * Duke/NOAA ECMM habitat-model density, in animals per 100 km² (Phase
+   * 4) — an independent, model-based figure shown alongside `share`,
+   * never blended into it. Only defined for the 3 tracked species with
+   * an Atlantic model (gray-whale has none — a real Pacific/Arctic
+   * migrant, not a gap) and only within the model's U.S. Atlantic/Gulf
+   * coverage; commonly omitted everywhere else, same honesty rule as
+   * `share`: never fabricated when there's nothing to report.
+   */
+  estimatedDensity: z.number().nonnegative().optional(),
 });
 
 export const SeasonalityResponseSchema = z.object({

@@ -64,6 +64,22 @@ export function DataCreditsPanel() {
           </section>
 
           <section>
+            <h3>Habitat density models</h3>
+            <p>
+              Duke University Marine Geospatial Ecology Laboratory — Roberts, J., Best, B., Mannocci, L. et al.
+              &ldquo;Habitat-based cetacean density models for the U.S. Atlantic and Gulf of Mexico.&rdquo; Sci Rep
+              6, 22615 (2016). Licensed CC BY 4.0.
+            </p>
+            <p className={styles.note}>
+              Shown as a second, model-based figure alongside the reported-sightings share, for U.S. Atlantic/Gulf
+              locations only — a different kind of estimate, not a replacement for it.
+            </p>
+            <a href="https://seamap.env.duke.edu/models/Duke/EC/" target="_blank" rel="noopener noreferrer">
+              About these models
+            </a>
+          </section>
+
+          <section>
             <h3>Map tiles</h3>
             <p>OpenFreeMap, OpenMapTiles, and OpenStreetMap contributors.</p>
           </section>

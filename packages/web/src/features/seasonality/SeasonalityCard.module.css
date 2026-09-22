@@ -40,9 +40,21 @@
   flex: none;
 }
 
-.speciesName {
+.speciesInfo {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.speciesName {
+  min-width: 0;
+}
+
+.density {
+  font-size: 0.72rem;
+  color: #888;
+  font-variant-numeric: tabular-nums;
 }
 
 .share {

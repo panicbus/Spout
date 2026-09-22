@@ -59,4 +59,17 @@ describe("SeasonalityResponseSchema", () => {
   it("rejects a month outside 1-12", () => {
     expect(() => SeasonalityResponseSchema.parse(validResponse({ month: 13 }))).toThrow();
   });
+
+  it("accepts an optional estimatedDensity (ECMM habitat-model enrichment, Phase 4) and rejects a negative one", () => {
+    const parsed = SeasonalityResponseSchema.parse(
+      validResponse({ species: [{ species: "humpback-whale", share: 0.86, sampleSize: 7081, estimatedDensity: 2.58 }] }),
+    );
+    expect(parsed.species[0]?.estimatedDensity).toBe(2.58);
+
+    expect(() =>
+      SeasonalityResponseSchema.parse(
+        validResponse({ species: [{ species: "humpback-whale", share: 0.86, sampleSize: 7081, estimatedDensity: -1 }] }),
+      ),
+    ).toThrow();
+  });
 });

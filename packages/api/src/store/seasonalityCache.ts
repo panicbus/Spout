@@ -1,4 +1,5 @@
-import { fetchSeasonality, type SeasonalityResult } from "../sources/gbifSeasonality.js";
+import type { SeasonalityFetcher, SeasonalityResult } from "../sources/gbifSeasonality.js";
+import { fetchSeasonalityWithDensity } from "../sources/seasonalityWithDensity.js";
 import { TtlCache } from "./ttlCache.js";
 
 /** Historical data, computed from an 11-year pool (gbifSeasonality.ts) — it does not go stale from day to day, so a long TTL is correct, not just tolerable. */
@@ -25,15 +26,15 @@ function cacheKey(lat: number, lon: number, month: number): string {
  * matter in practice; revisit with an LRU cap if it ever does.
  */
 export interface SeasonalityCacheOptions {
-  /** Overridable for tests; defaults to the real GBIF-fetching fetchSeasonality. */
-  fetcher?: typeof fetchSeasonality;
+  /** Overridable for tests; defaults to the real fetchSeasonalityWithDensity (GBIF share + ECMM density enrichment). */
+  fetcher?: SeasonalityFetcher;
 }
 
 export class SeasonalityCache {
   private caches = new Map<string, TtlCache<SeasonalityResult>>();
-  private readonly fetcher: typeof fetchSeasonality;
+  private readonly fetcher: SeasonalityFetcher;
 
-  constructor({ fetcher = fetchSeasonality }: SeasonalityCacheOptions = {}) {
+  constructor({ fetcher = fetchSeasonalityWithDensity }: SeasonalityCacheOptions = {}) {
     this.fetcher = fetcher;
   }
 

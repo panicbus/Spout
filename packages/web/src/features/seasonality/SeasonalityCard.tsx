@@ -42,6 +42,11 @@ function formatShare(share: number): string {
   return `${Math.round(share * 100)}%`;
 }
 
+/** `estimatedDensity` is animals per 100 km² (Duke/NOAA's ECMM habitat models, Phase 4) — an independently modeled figure, deliberately never blended into `formatShare`'s reported-sightings percentage above. */
+function formatDensity(density: number): string {
+  return `~${density < 1 ? density.toFixed(2) : density.toFixed(1)} modeled / 100 km²`;
+}
+
 export interface SeasonalityCardProps {
   /** `null` means nothing is selected — the card renders nothing. */
   lngLat: [number, number] | null;
@@ -89,7 +94,12 @@ export const SeasonalityCard = forwardRef<HTMLDivElement, SeasonalityCardProps>(
                     {[...result.data.species].sort(bySharesDescending).map((s) => (
                       <li key={s.species} className={styles.speciesRow}>
                         <img className={styles.speciesIcon} src={SPECIES_ICONS[s.species]} alt="" />
-                        <span className={styles.speciesName}>{SPECIES_LABELS[s.species]}</span>
+                        <span className={styles.speciesInfo}>
+                          <span className={styles.speciesName}>{SPECIES_LABELS[s.species]}</span>
+                          {s.estimatedDensity !== undefined && (
+                            <span className={styles.density}>{formatDensity(s.estimatedDensity)}</span>
+                          )}
+                        </span>
                         <span className={styles.share}>{s.share !== undefined ? formatShare(s.share) : "—"}</span>
                       </li>
                     ))}
@@ -98,6 +108,12 @@ export const SeasonalityCard = forwardRef<HTMLDivElement, SeasonalityCardProps>(
                     Share of {result.data.species[0]?.sampleSize.toLocaleString()} reported whale sightings
                     near here in {MONTH_NAMES[result.data.month - 1]}, not a chance of seeing one.
                   </p>
+                  {result.data.species.some((s) => s.estimatedDensity !== undefined) && (
+                    <p className={styles.note}>
+                      Modeled density (animals per 100 km²) is from Duke/NOAA&rsquo;s U.S. Atlantic/Gulf habitat
+                      models, independent of reported sightings — see Data sources for the citation.
+                    </p>
+                  )}
                 </>
               )}
             </>

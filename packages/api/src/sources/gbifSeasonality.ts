@@ -72,6 +72,8 @@ export interface SpeciesSeasonalityResult {
   species: Species;
   share: number | undefined;
   sampleSize: number;
+  /** Duke/NOAA ECMM habitat-model density (Phase 4, see ecmmDensity.ts) — `fetchSeasonality` itself never sets this; only the composed `fetchSeasonalityWithDensity` does. */
+  estimatedDensity?: number;
 }
 
 export interface SeasonalityResult {
@@ -83,6 +85,14 @@ export interface FetchSeasonalityOptions {
   radiusKm?: number;
   fetchImpl?: typeof fetch;
 }
+
+/** Shared by `fetchSeasonality` and the ECMM-enriched `fetchSeasonalityWithDensity` so `SeasonalityCache` can be handed either one. */
+export type SeasonalityFetcher = (
+  lat: number,
+  lon: number,
+  month: number,
+  options?: FetchSeasonalityOptions,
+) => Promise<SeasonalityResult>;
 
 /**
  * Computes, per tracked species, the effort-normalized share of
