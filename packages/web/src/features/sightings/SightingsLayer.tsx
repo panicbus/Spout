@@ -1,11 +1,12 @@
 import type { AddLayerObject, GeoJSONSource, MapMouseEvent } from "maplibre-gl";
-import type { Sighting, TimeWindow } from "@spout/contracts";
+import type { Bbox, Sighting, TimeWindow } from "@spout/contracts";
 import type { Point } from "geojson";
 import { useEffect, useRef, useState } from "react";
 import { useMap } from "../../components/map/MapContext.js";
 import { useGeoJsonMapLayer } from "../../components/map/useGeoJsonMapLayer.js";
 import { usePanCardIntoView } from "../../components/map/usePanCardIntoView.js";
 import { useProjectedPoint } from "../../components/map/useProjectedPoint.js";
+import { SeasonalityCard } from "../seasonality/SeasonalityCard.js";
 import { sightingsToGeoJson } from "../../lib/sightingsGeoJson.js";
 import { useNow } from "../../lib/useNow.js";
 import { useSightings } from "../../lib/useSightings.js";
@@ -159,18 +160,48 @@ const pointsLayer: AddLayerObject = {
  * doc comment for the lifecycle details neither component hand-rolls
  * anymore).
  *
- * Deliberately does not fetch by map viewport bbox yet — the API already
- * scopes ingestion to the California coast bbox, so an unfiltered fetch
- * is the whole dataset for v1's geographic scope.
+ * Fetches by the map's current viewport bbox (Phase 2, "global scope")
+ * rather than an unfiltered California-only fetch — the API's own
+ * `GET /api/sightings` route decides, per request, whether that bbox is
+ * still served by the persistent California store or the on-demand
+ * global path (see `packages/api/src/store/globalSightingsCache.ts`);
+ * this component doesn't need to know which.
  */
 export interface SightingsLayerProps {
   timeWindow: TimeWindow;
+  /** YYYY-MM-DD — which date the seasonality card (opened by tapping empty map, see the click handler below) answers "will I see a whale here" for. */
+  date: string;
 }
 
-export function SightingsLayer({ timeWindow }: SightingsLayerProps) {
+/** A selected sighting pin (its own recorded detail) or a bare tapped location (a seasonal pattern, computed live) — mutually exclusive, only one card is ever open at a time. */
+type Selection = { type: "sighting"; id: string; lngLat: [number, number] } | { type: "location"; lngLat: [number, number] } | null;
+
+export function SightingsLayer({ timeWindow, date }: SightingsLayerProps) {
   const map = useMap();
-  const result = useSightings({ window: timeWindow });
-  const [selection, setSelection] = useState<{ id: string; lngLat: [number, number] } | null>(null);
+
+  // Tracks the map's own current bounds so `useSightings` below can scope
+  // its fetch to what's actually on screen, instead of a single fixed
+  // region — read immediately once `map` exists (not just on the first
+  // 'moveend', which wouldn't fire until the user's first pan/zoom) and
+  // kept live via 'moveend'. Starts `undefined` (no bbox param sent at
+  // all) for the brief window before the map itself exists, rather than
+  // an arbitrary placeholder box.
+  const [viewportBbox, setViewportBbox] = useState<Bbox | undefined>(undefined);
+  useEffect(() => {
+    if (!map) return;
+    const updateBbox = () => {
+      const bounds = map.getBounds();
+      setViewportBbox([bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()]);
+    };
+    updateBbox();
+    map.on("moveend", updateBbox);
+    return () => {
+      map.off("moveend", updateBbox);
+    };
+  }, [map]);
+
+  const result = useSightings({ window: timeWindow, bbox: viewportBbox });
+  const [selection, setSelection] = useState<Selection>(null);
   const [lastData, setLastData] = useState<Sighting[]>([]);
 
   useGeoJsonMapLayer(map, result, sightingsToGeoJson, {
@@ -219,26 +250,30 @@ export function SightingsLayer({ timeWindow }: SightingsLayerProps) {
   // One whole-map click handler, not per-layer listeners: a tap can hit
   // an individual point (open its detail card), a cluster (zoom in to
   // expand it — MapLibre's own supercluster-backed source knows the
-  // right zoom level to actually split it), or neither (dismiss whatever
-  // was open). A layer-scoped listener per case can't express "dismiss
-  // when the click hit nothing", so this queries both layers at the
-  // click point itself and branches on what it finds. Guards each layer
-  // id with `getLayer` first — `queryRenderedFeatures` throws (not
-  // no-ops) for a layer id that doesn't exist on the map yet.
+  // right zoom level to actually split it), or neither. That third case
+  // used to just dismiss whatever was open; it now opens a
+  // `SeasonalityCard` for the tapped location instead — "what am I
+  // likely to see here, on this date" for anywhere, not just a sighting
+  // pin's own single recorded detail. Still dismisses whatever was
+  // already open in the sense that only one selection (and one card) is
+  // ever active at a time — see the `Selection` union above. A
+  // layer-scoped listener per case can't express any of this, so this
+  // queries both layers at the click point itself and branches on what
+  // it finds. Guards each layer id with `getLayer` first —
+  // `queryRenderedFeatures` throws (not no-ops) for a layer id that
+  // doesn't exist on the map yet.
   useEffect(() => {
     if (!map) return;
 
     const handleClick = (e: MapMouseEvent) => {
       const layers = [SIGHTINGS_POINTS_LAYER_ID, SIGHTINGS_CLUSTERS_LAYER_ID].filter((id) => map.getLayer(id));
-      if (layers.length === 0) return;
-
-      const features = map.queryRenderedFeatures(e.point, { layers });
+      const features = layers.length > 0 ? map.queryRenderedFeatures(e.point, { layers }) : [];
 
       const pointFeature = features.find((feature) => feature.layer.id === SIGHTINGS_POINTS_LAYER_ID);
       if (pointFeature) {
         const id = pointFeature.properties?.id as string | undefined;
         const lngLat = (pointFeature.geometry as Point).coordinates as [number, number];
-        setSelection(id ? { id, lngLat } : null);
+        setSelection(id ? { type: "sighting", id, lngLat } : null);
         return;
       }
 
@@ -258,7 +293,7 @@ export function SightingsLayer({ timeWindow }: SightingsLayerProps) {
         return;
       }
 
-      setSelection(null);
+      setSelection({ type: "location", lngLat: e.lngLat.toArray() as [number, number] });
     };
 
     map.on("click", handleClick);
@@ -274,11 +309,41 @@ export function SightingsLayer({ timeWindow }: SightingsLayerProps) {
   // rather than widening the GeoJSON properties, keeps that conversion
   // focused on exactly what paint expressions need (see its own doc
   // comment).
-  const selected = selection ? (lastData.find((sighting) => sighting.id === selection.id) ?? null) : null;
+  const selectedSighting =
+    selection?.type === "sighting" ? (lastData.find((sighting) => sighting.id === selection.id) ?? null) : null;
   const anchor = useProjectedPoint(map, selection?.lngLat ?? null);
 
-  const cardRef = useRef<HTMLDivElement>(null);
-  usePanCardIntoView(map, cardRef, selection?.id ?? null);
+  // Two separate refs/pan-triggers, not one shared between both cards:
+  // only one of `PinDetailCard`/`SeasonalityCard` is ever actually open
+  // (each independently gates on its own prop being non-null), but a
+  // single ref can't usefully point at "whichever one is active right
+  // now" — passing the same ref object to both `forwardRef` components
+  // would just have the second one silently overwrite the first's
+  // attachment on every render.
+  const pinCardRef = useRef<HTMLDivElement>(null);
+  const seasonalityCardRef = useRef<HTMLDivElement>(null);
+  usePanCardIntoView(map, pinCardRef, selection?.type === "sighting" ? selection.id : null);
+  usePanCardIntoView(
+    map,
+    seasonalityCardRef,
+    selection?.type === "location" ? `${selection.lngLat[0]},${selection.lngLat[1]}` : null,
+  );
 
-  return <PinDetailCard ref={cardRef} sighting={selected} anchor={anchor} onClose={() => setSelection(null)} />;
+  return (
+    <>
+      <PinDetailCard
+        ref={pinCardRef}
+        sighting={selectedSighting}
+        anchor={selection?.type === "sighting" ? anchor : null}
+        onClose={() => setSelection(null)}
+      />
+      <SeasonalityCard
+        ref={seasonalityCardRef}
+        lngLat={selection?.type === "location" ? selection.lngLat : null}
+        date={date}
+        anchor={selection?.type === "location" ? anchor : null}
+        onClose={() => setSelection(null)}
+      />
+    </>
+  );
 }

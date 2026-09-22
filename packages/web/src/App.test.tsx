@@ -38,7 +38,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByText("Last 90 days"));
 
-    await waitFor(() => expect(apiClient.fetchSightings).toHaveBeenCalledWith({ window: "90d" }));
+    await waitFor(() => expect(apiClient.fetchSightings).toHaveBeenCalledWith(expect.objectContaining({ window: "90d" })));
     expect(screen.getByRole("button", { name: "Last 90 days" })).toHaveAttribute("aria-pressed", "true");
   });
 });

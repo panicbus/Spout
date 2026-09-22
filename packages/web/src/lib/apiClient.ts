@@ -1,10 +1,12 @@
 import {
   HealthStatusSchema,
   ProbabilityGridSchema,
+  SeasonalityResponseSchema,
   SightingSchema,
   encodeSightingsQuery,
   type HealthStatus,
   type ProbabilityGrid,
+  type SeasonalityResponse,
   type Sighting,
   type SightingsQuery,
 } from "@spout/contracts";
@@ -51,4 +53,15 @@ export function fetchSightings(
 ): Promise<Sighting[]> {
   const path = `/api/sightings${encodeSightingsQuery(params)}`;
   return fetchAndValidate(path, z.array(SightingSchema), baseUrl);
+}
+
+/** Fetches the effort-normalized per-species sighting share for `date`'s calendar month near `(lat, lon)` (see ADR 0006). */
+export function fetchSeasonality(
+  lat: number,
+  lon: number,
+  date: string,
+  baseUrl: string = API_BASE_URL,
+): Promise<SeasonalityResponse> {
+  const params = new URLSearchParams({ lat: String(lat), lon: String(lon), date });
+  return fetchAndValidate(`/api/seasonality?${params.toString()}`, SeasonalityResponseSchema, baseUrl);
 }

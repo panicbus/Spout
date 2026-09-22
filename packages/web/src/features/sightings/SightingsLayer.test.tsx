@@ -19,9 +19,9 @@ vi.mock("../../lib/apiClient.js", async () => {
   return { ...actual, fetchSightings: vi.fn() };
 });
 
-/** Simulates a real click on the map — the combined whole-map handler this layer uses instead of a layer-scoped listener. */
-function clickMap(map: MapInstanceMock, point = { x: 50, y: 50 }) {
-  map.trigger("click", { point });
+/** Simulates a real click on the map — the combined whole-map handler this layer uses instead of a layer-scoped listener. `lngLat` mirrors real MapLibre's `LngLat` instance shape (a `.toArray()` method), read by the empty-map-tap branch (opens `SeasonalityCard` for wherever was tapped). */
+function clickMap(map: MapInstanceMock, point = { x: 50, y: 50 }, lngLat: [number, number] = [-122.1, 36.5]) {
+  map.trigger("click", { point, lngLat: { toArray: () => lngLat } });
 }
 
 /** A `queryRenderedFeatures`-shaped hit on the unclustered points layer, as a real MapLibre click would return. */
@@ -53,7 +53,7 @@ describe("SightingsLayer", () => {
 
     render(
       <MapCanvas>
-        <SightingsLayer timeWindow="30d" />
+        <SightingsLayer timeWindow="30d" date="2026-09-12" />
       </MapCanvas>,
     );
     const map = mapInstances[0]!;
@@ -86,11 +86,11 @@ describe("SightingsLayer", () => {
 
     render(
       <MapCanvas>
-        <SightingsLayer timeWindow="90d" />
+        <SightingsLayer timeWindow="90d" date="2026-09-12" />
       </MapCanvas>,
     );
 
-    await waitFor(() => expect(apiClient.fetchSightings).toHaveBeenCalledWith({ window: "90d" }));
+    await waitFor(() => expect(apiClient.fetchSightings).toHaveBeenCalledWith(expect.objectContaining({ window: "90d" })));
   });
 
   it("the points layer's paint expression encodes every ADR 0002/0003 visual requirement: tier color, obscured/citizen radius, and verification/age opacity", async () => {
@@ -98,7 +98,7 @@ describe("SightingsLayer", () => {
 
     render(
       <MapCanvas>
-        <SightingsLayer timeWindow="30d" />
+        <SightingsLayer timeWindow="30d" date="2026-09-12" />
       </MapCanvas>,
     );
     const map = mapInstances[0]!;
@@ -158,7 +158,7 @@ describe("SightingsLayer", () => {
 
     render(
       <MapCanvas>
-        <SightingsLayer timeWindow="30d" />
+        <SightingsLayer timeWindow="30d" date="2026-09-12" />
       </MapCanvas>,
     );
     const map = mapInstances[0]!;
@@ -183,7 +183,7 @@ describe("SightingsLayer", () => {
 
     const { unmount } = render(
       <MapCanvas>
-        <SightingsLayer timeWindow="30d" />
+        <SightingsLayer timeWindow="30d" date="2026-09-12" />
       </MapCanvas>,
     );
     const map = mapInstances[0]!;
@@ -206,7 +206,7 @@ describe("SightingsLayer", () => {
 
     render(
       <MapCanvas>
-        <SightingsLayer timeWindow="30d" />
+        <SightingsLayer timeWindow="30d" date="2026-09-12" />
       </MapCanvas>,
     );
     const map = mapInstances[0]!;
@@ -219,18 +219,25 @@ describe("SightingsLayer", () => {
   });
 
   it("does not remove the layers/source while a FilterBar window change is still in flight — the pins must stay visible, not blank out, during the refetch", async () => {
+    // Hangs specifically once the window becomes "90d" (the test's own
+    // deliberate change below) — not tied to call *count*, since the
+    // viewport-bbox effect (this layer now fetches scoped to the map's
+    // current bounds) fires its own extra fetch shortly after mount,
+    // before this test's rerender, and a fixed "2nd call hangs" scheme
+    // would hang the wrong one.
     let resolveSecondFetch!: (sightings: ReturnType<typeof buildSighting>[]) => void;
-    vi.mocked(apiClient.fetchSightings)
-      .mockResolvedValueOnce([buildSighting()])
-      .mockReturnValueOnce(
-        new Promise((resolve) => {
+    vi.mocked(apiClient.fetchSightings).mockImplementation((params) => {
+      if (params?.window === "90d") {
+        return new Promise((resolve) => {
           resolveSecondFetch = resolve;
-        }),
-      );
+        });
+      }
+      return Promise.resolve([buildSighting()]);
+    });
 
     const { rerender } = render(
       <MapCanvas>
-        <SightingsLayer timeWindow="30d" />
+        <SightingsLayer timeWindow="30d" date="2026-09-12" />
       </MapCanvas>,
     );
     const map = mapInstances[0]!;
@@ -243,7 +250,7 @@ describe("SightingsLayer", () => {
     // new (still-pending) fetch.
     rerender(
       <MapCanvas>
-        <SightingsLayer timeWindow={"90d" as TimeWindow} />
+        <SightingsLayer timeWindow={"90d" as TimeWindow} date="2026-09-12" />
       </MapCanvas>,
     );
 
@@ -251,7 +258,7 @@ describe("SightingsLayer", () => {
     expect(map.removeSource).not.toHaveBeenCalled();
 
     resolveSecondFetch([buildSighting()]);
-    await waitFor(() => expect(apiClient.fetchSightings).toHaveBeenCalledWith({ window: "90d" }));
+    await waitFor(() => expect(apiClient.fetchSightings).toHaveBeenCalledWith(expect.objectContaining({ window: "90d" })));
 
     // Still never torn down — the second fetch resolving just updates the
     // existing source's data in place.
@@ -265,7 +272,7 @@ describe("SightingsLayer", () => {
 
     render(
       <MapCanvas>
-        <SightingsLayer timeWindow="30d" />
+        <SightingsLayer timeWindow="30d" date="2026-09-12" />
       </MapCanvas>,
     );
     const map = mapInstances[0]!;
@@ -288,7 +295,7 @@ describe("SightingsLayer", () => {
 
     render(
       <MapCanvas>
-        <SightingsLayer timeWindow="30d" />
+        <SightingsLayer timeWindow="30d" date="2026-09-12" />
       </MapCanvas>,
     );
     const map = mapInstances[0]!;
@@ -306,13 +313,13 @@ describe("SightingsLayer", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("dismisses an open detail card when the click hits neither a point nor a cluster", async () => {
+  it("replaces an open pin detail card with a seasonality card when the next click hits neither a point nor a cluster", async () => {
     const sighting = buildSighting({ id: "gbif:42", species: "orca" });
     vi.mocked(apiClient.fetchSightings).mockResolvedValue([sighting]);
 
     render(
       <MapCanvas>
-        <SightingsLayer timeWindow="30d" />
+        <SightingsLayer timeWindow="30d" date="2026-09-12" />
       </MapCanvas>,
     );
     const map = mapInstances[0]!;
@@ -323,20 +330,24 @@ describe("SightingsLayer", () => {
     map.getLayer.mockReturnValue({ id: "exists" });
     map.queryRenderedFeatures.mockReturnValue([pointFeature("gbif:42")]);
     clickMap(map);
-    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("dialog")).toHaveAccessibleName("Orca"));
 
     map.queryRenderedFeatures.mockReturnValue([]);
     clickMap(map);
 
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    // The pin's own card closes — only one selection/card is ever active
+    // at a time — and a seasonality card opens for the tapped spot
+    // instead, not just a bare dismiss.
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Orca" })).not.toBeInTheDocument());
+    expect(screen.getByRole("dialog")).not.toHaveAccessibleName("Orca");
   });
 
-  it("does nothing on click before the sightings layers exist on the map yet (queryRenderedFeatures would throw for a layer id that isn't there)", async () => {
+  it("never calls queryRenderedFeatures before the sightings layers exist on the map yet (it throws for a layer id that isn't there) — a click still opens a seasonality card for the tapped spot regardless, since that doesn't depend on the pins layer at all", async () => {
     vi.mocked(apiClient.fetchSightings).mockResolvedValue([buildSighting()]);
 
     render(
       <MapCanvas>
-        <SightingsLayer timeWindow="30d" />
+        <SightingsLayer timeWindow="30d" date="2026-09-12" />
       </MapCanvas>,
     );
     const map = mapInstances[0]!;
@@ -345,22 +356,26 @@ describe("SightingsLayer", () => {
 
     expect(() => clickMap(map)).not.toThrow();
     expect(map.queryRenderedFeatures).not.toHaveBeenCalled();
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 
   it("still opens PinDetailCard for a still-visible pin while a refetch triggered by a FilterBar change is in flight (antagonist finding: a click handler gated on the fetch's own 'ok' state silently no-ops against pins useMapLayerLifecycle deliberately leaves on screen mid-refetch)", async () => {
     const sighting = buildSighting({ id: "gbif:42", species: "orca" });
+    // Hangs once window becomes "90d" — see the sibling test above for
+    // why this can't be a fixed "2nd call" scheme.
     let resolveSecondFetch!: (sightings: ReturnType<typeof buildSighting>[]) => void;
-    vi.mocked(apiClient.fetchSightings)
-      .mockResolvedValueOnce([sighting])
-      .mockReturnValueOnce(
-        new Promise((resolve) => {
+    vi.mocked(apiClient.fetchSightings).mockImplementation((params) => {
+      if (params?.window === "90d") {
+        return new Promise((resolve) => {
           resolveSecondFetch = resolve;
-        }),
-      );
+        });
+      }
+      return Promise.resolve([sighting]);
+    });
 
     const { rerender } = render(
       <MapCanvas>
-        <SightingsLayer timeWindow="30d" />
+        <SightingsLayer timeWindow="30d" date="2026-09-12" />
       </MapCanvas>,
     );
     const map = mapInstances[0]!;
@@ -374,7 +389,7 @@ describe("SightingsLayer", () => {
     // stay on screen and clickable per useMapLayerLifecycle's design.
     rerender(
       <MapCanvas>
-        <SightingsLayer timeWindow={"90d" as TimeWindow} />
+        <SightingsLayer timeWindow={"90d" as TimeWindow} date="2026-09-12" />
       </MapCanvas>,
     );
 
@@ -385,7 +400,7 @@ describe("SightingsLayer", () => {
     await waitFor(() => expect(screen.getByRole("dialog")).toHaveAccessibleName("Orca"));
 
     resolveSecondFetch([sighting]);
-    await waitFor(() => expect(apiClient.fetchSightings).toHaveBeenCalledWith({ window: "90d" }));
+    await waitFor(() => expect(apiClient.fetchSightings).toHaveBeenCalledWith(expect.objectContaining({ window: "90d" })));
   });
 
   it("closes PinDetailCard when dismissed", async () => {
@@ -394,7 +409,7 @@ describe("SightingsLayer", () => {
 
     render(
       <MapCanvas>
-        <SightingsLayer timeWindow="30d" />
+        <SightingsLayer timeWindow="30d" date="2026-09-12" />
       </MapCanvas>,
     );
     const map = mapInstances[0]!;

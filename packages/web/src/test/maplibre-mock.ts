@@ -42,6 +42,8 @@ export interface MapInstanceMock {
   queryRenderedFeatures: ReturnType<typeof vi.fn>;
   easeTo: ReturnType<typeof vi.fn>;
   fitBounds: ReturnType<typeof vi.fn>;
+  /** Defaults to a real `LngLatBounds`-shaped object covering the whole world — override per test when a test cares about the actual viewport bbox a component reads. */
+  getBounds: ReturnType<typeof vi.fn>;
   on: ReturnType<typeof vi.fn<EventBinder>>;
   once: ReturnType<typeof vi.fn<EventBinder>>;
   off: ReturnType<typeof vi.fn<EventBinder>>;
@@ -74,6 +76,12 @@ class MapMock implements MapInstanceMock {
   queryRenderedFeatures: ReturnType<typeof vi.fn> = vi.fn(() => []);
   easeTo: ReturnType<typeof vi.fn> = vi.fn();
   fitBounds: ReturnType<typeof vi.fn> = vi.fn();
+  getBounds: ReturnType<typeof vi.fn> = vi.fn(() => ({
+    getWest: () => -180,
+    getSouth: () => -90,
+    getEast: () => 180,
+    getNorth: () => 90,
+  }));
 
   private listeners = new Map<string, Set<Listener>>();
   // Real maplibre-gl's Evented class keeps this same original->wrapped

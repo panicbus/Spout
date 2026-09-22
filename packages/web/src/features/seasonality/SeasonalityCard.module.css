@@ -1,0 +1,59 @@
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  font-size: 0.9rem;
+  padding: 0.75rem 0.9rem 0.7rem;
+}
+
+.title {
+  margin: 0;
+  padding-right: 1.5rem;
+  font-size: 1.1rem;
+}
+
+.status {
+  margin: 0;
+  color: #555;
+  font-size: 0.85rem;
+}
+
+.speciesList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.speciesRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.speciesIcon {
+  display: block;
+  height: 24px;
+  width: auto;
+  flex: none;
+}
+
+.speciesName {
+  flex: 1;
+  min-width: 0;
+}
+
+.share {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: #2a6f97;
+}
+
+.note {
+  margin: 0.2rem 0 0;
+  color: #888;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
