@@ -7,3 +7,4 @@ export * from "./sighting.js";
 export * from "./probability.js";
 export * from "./filters.js";
 export * from "./sightingsQueryCodec.js";
+export * from "./seasonality.js";

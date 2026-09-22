@@ -7,10 +7,13 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { healthRoute } from "./routes/health.js";
 import { createProbabilityRoute } from "./routes/probability.js";
+import { createSeasonalityRoute } from "./routes/seasonality.js";
 import { createSightingsRoute } from "./routes/sightings.js";
+import { fetchSeasonality } from "./sources/gbifSeasonality.js";
 import { fetchLatestProbabilityGrid } from "./sources/whalewatch.js";
 import { createINaturalistRefreshCache } from "./store/inaturalistRefresh.js";
 import { ProbabilityCache } from "./store/probabilityCache.js";
+import { SeasonalityCache } from "./store/seasonalityCache.js";
 import { openSightingsDb } from "./store/sightingsDb.js";
 import { createSightingsRefreshCache } from "./store/sightingsRefresh.js";
 
@@ -60,6 +63,8 @@ export interface CreateAppOptions {
   inaturalistFetcher?: (options: { sinceDate: string }) => Promise<Sighting[]>;
   /** Overridable for tests (e.g. an in-memory db); defaults to a real file under packages/api/data/. */
   sightingsDb?: Database.Database;
+  /** Overridable for tests; defaults to the real GBIF-fetching fetchSeasonality. */
+  seasonalityFetcher?: typeof fetchSeasonality;
 }
 
 /**
@@ -92,8 +97,11 @@ export function createApp(options: CreateAppOptions = {}) {
     fetcher: options.inaturalistFetcher,
   });
 
+  const seasonalityCache = new SeasonalityCache({ fetcher: options.seasonalityFetcher });
+
   app.route("/", healthRoute);
   app.route("/", createProbabilityRoute(probabilityCache));
+  app.route("/", createSeasonalityRoute(seasonalityCache));
   app.route(
     "/",
     createSightingsRoute(sightingsDb, [
