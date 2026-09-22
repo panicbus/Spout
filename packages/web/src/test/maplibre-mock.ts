@@ -149,4 +149,13 @@ class MapMock implements MapInstanceMock {
 
 class NavigationControlMock {}
 
+/**
+ * `useMapInstance.ts` calls the real `setWorkerUrl` at module load time
+ * (not inside a function) — this needs to exist here regardless of
+ * whether any given test cares about it, or importing that module at all
+ * would throw. Explicitly typed: `tsc --noEmit` rejects a bare `vi.fn()`
+ * export here (TS2742 — the inferred mock type isn't portably nameable).
+ */
+export const setWorkerUrl: (url: string) => void = vi.fn();
+
 export { MapMock as Map, NavigationControlMock as NavigationControl };

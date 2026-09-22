@@ -1,6 +1,32 @@
-import { Map as MapLibreMap, NavigationControl } from "maplibre-gl";
+import { Map as MapLibreMap, NavigationControl, setWorkerUrl } from "maplibre-gl";
 import { useCallback, useEffect, useState } from "react";
 import { DEFAULT_MAP_BOUNDS, DEFAULT_MAP_FIT_OPTIONS, MAP_STYLE_URL } from "../../lib/mapConfig.js";
+
+/**
+ * MapLibre's own default worker-URL resolution silently resolves to a
+ * path that doesn't exist in this app's production build — the map still
+ * rendered the base style (that alone doesn't need the worker), but every
+ * data layer in this app is gated on the map's 'load' event, which itself
+ * waits on worker-processed tiles, so 'load' never fired and nothing
+ * about that ever reached the screen. No console error from the app
+ * itself; reproduced only by inspecting the live map instance directly.
+ * Never reproduced in local dev, where Vite's dev server resolves
+ * `maplibre-gl`'s internals straight out of node_modules; only a real
+ * production build hits this.
+ *
+ * `vite.config.ts`'s `viteStaticCopy` puts MapLibre's own pre-built
+ * worker bundle at this exact, stable, unhashed path — and, critically,
+ * puts `maplibre-gl-shared.mjs` (a real dependency the worker file
+ * imports via a plain, un-rewritten `./maplibre-gl-shared.mjs` baked into
+ * its own source) right next to it. Pointing `setWorkerUrl` at a
+ * *content-hashed* copy of just the worker file (an earlier version of
+ * this fix) still failed: the worker loaded, but its own relative import
+ * of the shared chunk then 404'd, since nothing had copied that file to
+ * the hashed name/location the worker's literal import string expected
+ * — confirmed live by instantiating the worker directly and catching its
+ * `error` event. Set once, at module load, before any Map is constructed.
+ */
+setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
 
 /**
  * Owns the MapLibre GL map's full lifecycle: construction against a
@@ -23,15 +49,14 @@ export function useMapInstance() {
       container,
       style: MAP_STYLE_URL,
     });
-    // Framing the initial view via fitBounds() as an imperative call, not
-    // the constructor's own `bounds` option: passing `bounds` directly to
-    // the constructor left the map's 'load' event permanently unfired in
-    // production (confirmed live — map.loaded() stuck at false, our own
-    // data sources/layers, which are gated on 'load', never got added, no
-    // console error) despite behaving correctly in local dev. Calling
-    // fitBounds() right after construction gets the same viewport-aware
-    // framing (correct on a phone and a desktop window alike) without
-    // whatever construction-time interaction was blocking 'load'.
+    // Framing the initial view via fitBounds() as an imperative call
+    // rather than the constructor's own `bounds` option — functionally
+    // equivalent (both were tried live; neither was the actual cause of
+    // the 'load'-never-fires bug this hook's setWorkerUrl call above
+    // fixes, which is real and worth double-checking before assuming a
+    // future MapLibre upgrade makes this moot). Kept as an imperative
+    // call mainly because `animate: false` reads more explicitly here
+    // than folded into a constructor option.
     instance.fitBounds(DEFAULT_MAP_BOUNDS, { ...DEFAULT_MAP_FIT_OPTIONS, animate: false });
     instance.addControl(new NavigationControl(), "top-right");
 

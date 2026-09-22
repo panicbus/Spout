@@ -25,14 +25,12 @@ describe("useMapInstance", () => {
     });
   });
 
-  // A real MapLibre bug this project hit live: passing `bounds` to the
-  // *constructor* left the map's 'load' event permanently unfired in
-  // production, so every data layer (gated on 'load') silently never
-  // rendered — confirmed by inspecting the live map instance directly,
-  // no console error. Calling fitBounds() as a separate method after
-  // construction sidesteps whatever construction-time interaction caused
-  // that. This test is what would catch a regression back to the
-  // constructor-option form.
+  // Asserts the chosen form (fitBounds() as a method, not the
+  // constructor's own `bounds` option) — both were tried live while
+  // chasing a real production bug (see useMapInstance.ts's setWorkerUrl
+  // doc comment: the actual cause was an unbundled worker script, not
+  // this), and this is what would catch a regression back to the other
+  // form if a future refactor changes it without re-verifying live.
   it("fits the initial view to the California coast bbox via fitBounds(), not the constructor's own bounds option", () => {
     const { result } = renderHook(() => useMapInstance());
     act(() => result.current.containerRef(document.createElement("div")));
