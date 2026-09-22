@@ -22,9 +22,17 @@ export function useMapInstance() {
     const instance = new MapLibreMap({
       container,
       style: MAP_STYLE_URL,
-      bounds: DEFAULT_MAP_BOUNDS,
-      fitBoundsOptions: DEFAULT_MAP_FIT_OPTIONS,
     });
+    // Framing the initial view via fitBounds() as an imperative call, not
+    // the constructor's own `bounds` option: passing `bounds` directly to
+    // the constructor left the map's 'load' event permanently unfired in
+    // production (confirmed live — map.loaded() stuck at false, our own
+    // data sources/layers, which are gated on 'load', never got added, no
+    // console error) despite behaving correctly in local dev. Calling
+    // fitBounds() right after construction gets the same viewport-aware
+    // framing (correct on a phone and a desktop window alike) without
+    // whatever construction-time interaction was blocking 'load'.
+    instance.fitBounds(DEFAULT_MAP_BOUNDS, { ...DEFAULT_MAP_FIT_OPTIONS, animate: false });
     instance.addControl(new NavigationControl(), "top-right");
 
     // This is React's own documented shape for synchronizing with an

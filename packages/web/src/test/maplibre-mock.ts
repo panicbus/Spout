@@ -41,6 +41,7 @@ export interface MapInstanceMock {
   /** Defaults to `[]` (nothing hit) — override per test to simulate a click landing on a real feature. */
   queryRenderedFeatures: ReturnType<typeof vi.fn>;
   easeTo: ReturnType<typeof vi.fn>;
+  fitBounds: ReturnType<typeof vi.fn>;
   on: ReturnType<typeof vi.fn<EventBinder>>;
   once: ReturnType<typeof vi.fn<EventBinder>>;
   off: ReturnType<typeof vi.fn<EventBinder>>;
@@ -72,6 +73,7 @@ class MapMock implements MapInstanceMock {
   unproject: ReturnType<typeof vi.fn> = vi.fn(() => ({ lng: 0, lat: 0 }));
   queryRenderedFeatures: ReturnType<typeof vi.fn> = vi.fn(() => []);
   easeTo: ReturnType<typeof vi.fn> = vi.fn();
+  fitBounds: ReturnType<typeof vi.fn> = vi.fn();
 
   private listeners = new Map<string, Set<Listener>>();
   // Real maplibre-gl's Evented class keeps this same original->wrapped
