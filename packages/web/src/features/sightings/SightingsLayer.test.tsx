@@ -6,6 +6,7 @@ import { MapCanvas } from "../../components/map/MapCanvas.js";
 import * as apiClient from "../../lib/apiClient.js";
 import { mapInstances, resetMaplibreMock, type MapInstanceMock } from "../../test/maplibre-mock.js";
 import {
+  BASEMAP_WATER_LAYER_ID,
   SIGHTINGS_CLUSTERS_LAYER_ID,
   SIGHTINGS_CLUSTER_COUNT_LAYER_ID,
   SIGHTINGS_POINTS_LAYER_ID,
@@ -19,7 +20,7 @@ vi.mock("../../lib/apiClient.js", async () => {
   return { ...actual, fetchSightings: vi.fn() };
 });
 
-/** Simulates a real click on the map — the combined whole-map handler this layer uses instead of a layer-scoped listener. `lngLat` mirrors real MapLibre's `LngLat` instance shape (a `.toArray()` method), read by the empty-map-tap branch — opens `SeasonalityCard` for wherever was tapped only when nothing was already selected; otherwise it just closes whatever was open. */
+/** Simulates a real click on the map — the combined whole-map handler this layer uses instead of a layer-scoped listener. `lngLat` mirrors real MapLibre's `LngLat` instance shape (a `.toArray()` method), read by the empty-map-tap branch — opens `SeasonalityCard` for wherever was tapped only when the tap landed on water (see `mockQueryResults`) and nothing was already selected; otherwise it just closes whatever was open. */
 function clickMap(map: MapInstanceMock, point = { x: 50, y: 50 }, lngLat: [number, number] = [-122.1, 36.5]) {
   map.trigger("click", { point, lngLat: { toArray: () => lngLat } });
 }
@@ -40,6 +41,20 @@ function clusterFeatureHit(clusterId: number, coordinates: [number, number] = [-
     properties: { cluster_id: clusterId, point_count: 12 },
     geometry: { type: "Point", coordinates },
   };
+}
+
+/**
+ * Real MapLibre `queryRenderedFeatures` calls are always scoped to the
+ * `layers` option passed in, so a single blanket `mockReturnValue` can't
+ * distinguish "no pin/cluster at this point" from "this point isn't
+ * water" — the click handler queries each independently. `hits` answers
+ * the pins/clusters query; `isWater` answers the separate water-layer
+ * check the empty-space branch gates a seasonality card open on.
+ */
+function mockQueryResults(map: MapInstanceMock, { hits = [], isWater = true }: { hits?: unknown[]; isWater?: boolean } = {}) {
+  map.queryRenderedFeatures.mockImplementation((_point: unknown, options?: { layers?: string[] }) =>
+    options?.layers?.includes(BASEMAP_WATER_LAYER_ID) ? (isWater ? [{ layer: { id: BASEMAP_WATER_LAYER_ID } }] : []) : hits,
+  );
 }
 
 describe("SightingsLayer", () => {
@@ -332,7 +347,9 @@ describe("SightingsLayer", () => {
     clickMap(map);
     await waitFor(() => expect(screen.getByRole("dialog")).toHaveAccessibleName("Orca"));
 
-    map.queryRenderedFeatures.mockReturnValue([]);
+    // The second tap hits open water (not a pin/cluster) — still just a
+    // dismiss, since a card was already open.
+    mockQueryResults(map, { isWater: true });
     clickMap(map);
 
     // A tap elsewhere while a card is open is a dismiss, like tapping a
@@ -341,7 +358,7 @@ describe("SightingsLayer", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
-  it("closes an already-open seasonality card on the next empty-space click, rather than swapping in a new one for the new tap location", async () => {
+  it("closes an already-open seasonality card on the next empty-space water click, rather than swapping in a new one for the new tap location", async () => {
     vi.mocked(apiClient.fetchSightings).mockResolvedValue([]);
 
     render(
@@ -354,7 +371,7 @@ describe("SightingsLayer", () => {
     map.trigger("load");
     await waitFor(() => expect(map.addSource).toHaveBeenCalled());
     map.getLayer.mockReturnValue({ id: "exists" });
-    map.queryRenderedFeatures.mockReturnValue([]);
+    mockQueryResults(map, { isWater: true });
 
     clickMap(map, { x: 50, y: 50 }, [-122.1, 36.5]);
     await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
@@ -364,7 +381,52 @@ describe("SightingsLayer", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
-  it("never calls queryRenderedFeatures before the sightings layers exist on the map yet (it throws for a layer id that isn't there) — a click still opens a seasonality card for the tapped spot regardless, since that doesn't depend on the pins layer at all", async () => {
+  it("never opens a seasonality card for a tap on land — only water is a real question for 'will I see a whale here'", async () => {
+    vi.mocked(apiClient.fetchSightings).mockResolvedValue([]);
+
+    render(
+      <MapCanvas>
+        <SightingsLayer timeWindow="30d" date="2026-09-12" />
+      </MapCanvas>,
+    );
+    const map = mapInstances[0]!;
+    await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
+    map.trigger("load");
+    await waitFor(() => expect(map.addSource).toHaveBeenCalled());
+    map.getLayer.mockReturnValue({ id: "exists" });
+    mockQueryResults(map, { isWater: false });
+
+    clickMap(map);
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("dismisses an open card on a land tap, same as any other non-interactive tap, without opening a new one", async () => {
+    const sighting = buildSighting({ id: "gbif:42", species: "orca" });
+    vi.mocked(apiClient.fetchSightings).mockResolvedValue([sighting]);
+
+    render(
+      <MapCanvas>
+        <SightingsLayer timeWindow="30d" date="2026-09-12" />
+      </MapCanvas>,
+    );
+    const map = mapInstances[0]!;
+    await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
+    map.trigger("load");
+    await waitFor(() => expect(map.addSource).toHaveBeenCalled());
+
+    map.getLayer.mockReturnValue({ id: "exists" });
+    map.queryRenderedFeatures.mockReturnValue([pointFeature("gbif:42")]);
+    clickMap(map);
+    await waitFor(() => expect(screen.getByRole("dialog")).toHaveAccessibleName("Orca"));
+
+    mockQueryResults(map, { isWater: false });
+    clickMap(map);
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("treats a click before the map/style has finished loading as unconfirmed water — no crash, no seasonality card (the base style's own water layer isn't queryable yet either, tied to the same 'load' event as this layer's own layers)", async () => {
     vi.mocked(apiClient.fetchSightings).mockResolvedValue([buildSighting()]);
 
     render(
@@ -374,11 +436,11 @@ describe("SightingsLayer", () => {
     );
     const map = mapInstances[0]!;
     await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
-    // Deliberately never triggers "load" — the layers never get added.
+    // Deliberately never triggers "load" — no layers (ours or the base style's) exist yet.
 
     expect(() => clickMap(map)).not.toThrow();
     expect(map.queryRenderedFeatures).not.toHaveBeenCalled();
-    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("still opens PinDetailCard for a still-visible pin while a refetch triggered by a FilterBar change is in flight (antagonist finding: a click handler gated on the fetch's own 'ok' state silently no-ops against pins useMapLayerLifecycle deliberately leaves on screen mid-refetch)", async () => {

@@ -18,6 +18,20 @@ export const SIGHTINGS_CLUSTERS_LAYER_ID = "sightings-clusters";
 export const SIGHTINGS_CLUSTER_COUNT_LAYER_ID = "sightings-cluster-count";
 export const SIGHTINGS_POINTS_LAYER_ID = "sightings-points";
 
+/**
+ * The one fill layer in OpenFreeMap's "liberty" base style (`mapConfig.ts`'s
+ * `MAP_STYLE_URL`) that represents real water bodies (ocean/lake/river,
+ * OpenMapTiles merges these under one schema — verified live against the
+ * style's own JSON) — not a layer this app adds itself. No `minzoom`/
+ * `maxzoom` set, so it's always rendered/queryable. Deliberately NOT
+ * implemented as "no land layer hit" instead: this style has no single
+ * comprehensive land polygon (landcover/landuse only cover specific
+ * classified land-use types; most bare/unclassified land is just the
+ * style's plain background color with no queryable feature at all), so a
+ * land-absence check would misclassify huge swaths of real land as water.
+ */
+export const BASEMAP_WATER_LAYER_ID = "water";
+
 /** Placeholder tier colors — a real palette pass belongs to R4's UX round, not here. */
 const TIER_COLORS = { research: "#2a6f97", citizen: "#e09f3e", acoustic: "#6c757d" } as const;
 
@@ -251,15 +265,15 @@ export function SightingsLayer({ timeWindow, date }: SightingsLayerProps) {
   // an individual point (open its detail card), a cluster (zoom in to
   // expand it — MapLibre's own supercluster-backed source knows the
   // right zoom level to actually split it), or neither. That third case
-  // used to just dismiss whatever was open; it now opens a
-  // `SeasonalityCard` for the tapped location instead — "what am I
+  // opens a `SeasonalityCard` for the tapped location — "what am I
   // likely to see here, on this date" for anywhere, not just a sighting
-  // pin's own single recorded detail. Still dismisses whatever was
-  // already open in the sense that only one selection (and one card) is
-  // ever active at a time — see the `Selection` union above. A
+  // pin's own single recorded detail — but only when the tap actually
+  // landed on water; a seasonality answer for a point in the middle of a
+  // continent isn't a real question, so a land tap is just a dismiss,
+  // same as tapping anywhere else that isn't interactive. A
   // layer-scoped listener per case can't express any of this, so this
-  // queries both layers at the click point itself and branches on what
-  // it finds. Guards each layer id with `getLayer` first —
+  // queries the relevant layers at the click point itself and branches
+  // on what it finds. Guards each layer id with `getLayer` first —
   // `queryRenderedFeatures` throws (not no-ops) for a layer id that
   // doesn't exist on the map yet.
   useEffect(() => {
@@ -293,13 +307,21 @@ export function SightingsLayer({ timeWindow, date }: SightingsLayerProps) {
         return;
       }
 
-      // Neither a pin nor a cluster was hit. If a card is already open,
-      // this tap is a dismiss (matching how tapping a dialog's backdrop
-      // closes it) — it must not swap in a fresh seasonality card for
-      // wherever was just tapped. Only open one when nothing was open to
-      // begin with. The functional setState form reads the true latest
-      // selection at click time regardless of when this closure was
-      // created, so `selection` doesn't need to be a dependency here.
+      // Neither a pin nor a cluster was hit. Only open a fresh
+      // seasonality card for a water tap, and only when nothing was
+      // already open — matching how tapping a dialog's backdrop closes
+      // it rather than swapping in a new one. A land tap (or any water
+      // tap while a card is already open) is just a dismiss. The
+      // functional setState form reads the true latest selection at
+      // click time regardless of when this closure was created, so
+      // `selection` doesn't need to be a dependency here.
+      const isWater = map.getLayer(BASEMAP_WATER_LAYER_ID)
+        ? map.queryRenderedFeatures(e.point, { layers: [BASEMAP_WATER_LAYER_ID] }).length > 0
+        : false;
+      if (!isWater) {
+        setSelection(null);
+        return;
+      }
       setSelection((current) =>
         current ? null : { type: "location", lngLat: e.lngLat.toArray() as [number, number] },
       );
