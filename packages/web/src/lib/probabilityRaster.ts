@@ -11,20 +11,30 @@ export interface ProbabilityRasterImage {
 export type ImageCorners = [[number, number], [number, number], [number, number], [number, number]];
 
 /**
- * Mirrors the blue→red ramp `ProbabilityLayer`'s old `circle-color`
- * interpolate expression used, for visual continuity with prior rounds
- * and with NOAA's own color scale. Exported (not just a local const) so
- * `ProbabilityLegend` can build its gradient from these exact stops
- * instead of a hand-copied duplicate that could silently drift out of
- * sync with what's actually rendered.
+ * Green→yellow→orange→red — no blue. The original ramp's blue/cyan
+ * bottom end (mirroring the old `circle-color` expression) covered most
+ * of the ocean at full opacity (every non-land, non-nodata pixel used to
+ * render at alpha 255 regardless of probability), which is exactly the
+ * "hard edge" a real user reported: a solid dark-navy rectangle butting
+ * up against the plain basemap ocean color wherever the grid's bbox or a
+ * nodata gap ended, plus a low-value color that carried no real
+ * information (a near-zero probability is not usefully distinguished
+ * from another near-zero probability by which shade of blue it gets).
+ * Each stop now also carries its own `alpha`, fading in from fully
+ * transparent at the bottom of the scale — low-probability water fades
+ * into the basemap instead of reading as a hard-edged color block, and
+ * only genuinely elevated probability (green and up) draws anything at
+ * all. Exported (not just a local const) so `ProbabilityLegend` can
+ * build its gradient from these exact stops instead of a hand-copied
+ * duplicate that could silently drift out of sync with what's actually
+ * rendered.
  */
-export const COLOR_STOPS: { stop: number; rgb: [number, number, number] }[] = [
-  { stop: 0, rgb: [27, 20, 100] }, // #1b1464
-  { stop: 0.2, rgb: [65, 105, 225] }, // royalblue
-  { stop: 0.4, rgb: [0, 255, 255] }, // cyan
-  { stop: 0.6, rgb: [0, 255, 0] }, // lime
-  { stop: 0.8, rgb: [255, 255, 0] }, // yellow
-  { stop: 1, rgb: [255, 0, 0] }, // red
+export const COLOR_STOPS: { stop: number; rgb: [number, number, number]; alpha: number }[] = [
+  { stop: 0, rgb: [0, 200, 0], alpha: 0 }, // green, but invisible — nothing worth drawing at the very bottom of the scale
+  { stop: 0.25, rgb: [0, 200, 0], alpha: 0.5 }, // green fades in
+  { stop: 0.5, rgb: [255, 255, 0], alpha: 0.75 }, // yellow
+  { stop: 0.75, rgb: [255, 140, 0], alpha: 0.9 }, // orange
+  { stop: 1, rgb: [255, 0, 0], alpha: 1 }, // red
 ];
 
 function lerp(a: number, b: number, t: number): number {
@@ -35,17 +45,24 @@ function clamp(v: number, max: number): number {
   return v < 0 ? 0 : v > max ? max : v;
 }
 
-function colorForProbability(probability: number): [number, number, number] {
+/** Alpha is 0-1 (the caller scales it to a pixel byte) — kept as a fraction here so it interpolates on the same footing as the 0-1 `stop` positions themselves. */
+function colorForProbability(probability: number): [number, number, number, number] {
   const clamped = Math.min(1, Math.max(0, probability));
   for (let i = 0; i < COLOR_STOPS.length - 1; i++) {
     const lower = COLOR_STOPS[i]!;
     const upper = COLOR_STOPS[i + 1]!;
     if (clamped <= upper.stop) {
       const t = (clamped - lower.stop) / (upper.stop - lower.stop);
-      return [lerp(lower.rgb[0], upper.rgb[0], t), lerp(lower.rgb[1], upper.rgb[1], t), lerp(lower.rgb[2], upper.rgb[2], t)];
+      return [
+        lerp(lower.rgb[0], upper.rgb[0], t),
+        lerp(lower.rgb[1], upper.rgb[1], t),
+        lerp(lower.rgb[2], upper.rgb[2], t),
+        lower.alpha + (upper.alpha - lower.alpha) * t,
+      ];
     }
   }
-  return COLOR_STOPS[COLOR_STOPS.length - 1]!.rgb;
+  const last = COLOR_STOPS[COLOR_STOPS.length - 1]!;
+  return [last.rgb[0], last.rgb[1], last.rgb[2], last.alpha];
 }
 
 function base64ToBytes(base64: string): Uint8Array {
@@ -196,12 +213,12 @@ export function buildProbabilityRasterImage(grid: ProbabilityGrid): ProbabilityR
       const probability = bilinearProbabilityAt(values, rows, cols, fracRow, fracCol);
       if (Number.isNaN(probability)) continue; // nodata — leave transparent
 
-      const [red, green, blue] = colorForProbability(probability);
+      const [red, green, blue, alpha] = colorForProbability(probability);
       const idx = superIndex * 4;
       pixels[idx] = red;
       pixels[idx + 1] = green;
       pixels[idx + 2] = blue;
-      pixels[idx + 3] = 255;
+      pixels[idx + 3] = Math.round(alpha * 255);
     }
   }
 

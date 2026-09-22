@@ -19,7 +19,7 @@ vi.mock("../../lib/apiClient.js", async () => {
   return { ...actual, fetchSightings: vi.fn() };
 });
 
-/** Simulates a real click on the map — the combined whole-map handler this layer uses instead of a layer-scoped listener. `lngLat` mirrors real MapLibre's `LngLat` instance shape (a `.toArray()` method), read by the empty-map-tap branch (opens `SeasonalityCard` for wherever was tapped). */
+/** Simulates a real click on the map — the combined whole-map handler this layer uses instead of a layer-scoped listener. `lngLat` mirrors real MapLibre's `LngLat` instance shape (a `.toArray()` method), read by the empty-map-tap branch — opens `SeasonalityCard` for wherever was tapped only when nothing was already selected; otherwise it just closes whatever was open. */
 function clickMap(map: MapInstanceMock, point = { x: 50, y: 50 }, lngLat: [number, number] = [-122.1, 36.5]) {
   map.trigger("click", { point, lngLat: { toArray: () => lngLat } });
 }
@@ -313,7 +313,7 @@ describe("SightingsLayer", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("replaces an open pin detail card with a seasonality card when the next click hits neither a point nor a cluster", async () => {
+  it("closes an open pin detail card when the next click hits neither a point nor a cluster, without opening a seasonality card for the new tap", async () => {
     const sighting = buildSighting({ id: "gbif:42", species: "orca" });
     vi.mocked(apiClient.fetchSightings).mockResolvedValue([sighting]);
 
@@ -335,11 +335,33 @@ describe("SightingsLayer", () => {
     map.queryRenderedFeatures.mockReturnValue([]);
     clickMap(map);
 
-    // The pin's own card closes — only one selection/card is ever active
-    // at a time — and a seasonality card opens for the tapped spot
-    // instead, not just a bare dismiss.
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Orca" })).not.toBeInTheDocument());
-    expect(screen.getByRole("dialog")).not.toHaveAccessibleName("Orca");
+    // A tap elsewhere while a card is open is a dismiss, like tapping a
+    // dialog's backdrop — it must not swap in a fresh seasonality card
+    // for wherever was just tapped.
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("closes an already-open seasonality card on the next empty-space click, rather than swapping in a new one for the new tap location", async () => {
+    vi.mocked(apiClient.fetchSightings).mockResolvedValue([]);
+
+    render(
+      <MapCanvas>
+        <SightingsLayer timeWindow="30d" date="2026-09-12" />
+      </MapCanvas>,
+    );
+    const map = mapInstances[0]!;
+    await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
+    map.trigger("load");
+    await waitFor(() => expect(map.addSource).toHaveBeenCalled());
+    map.getLayer.mockReturnValue({ id: "exists" });
+    map.queryRenderedFeatures.mockReturnValue([]);
+
+    clickMap(map, { x: 50, y: 50 }, [-122.1, 36.5]);
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+
+    clickMap(map, { x: 200, y: 200 }, [-70.2, 42.35]);
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
   it("never calls queryRenderedFeatures before the sightings layers exist on the map yet (it throws for a layer id that isn't there) — a click still opens a seasonality card for the tapped spot regardless, since that doesn't depend on the pins layer at all", async () => {

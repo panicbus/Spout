@@ -131,20 +131,22 @@ describe("buildProbabilityRasterImage", () => {
     expect(opaqueCount).toBe(1);
   });
 
-  it("interpolates color along the same ramp the circle layer used to render, at a true midpoint (not coincidentally exactly on a stop)", () => {
+  it("interpolates color (and alpha) along the ramp at a true midpoint (not coincidentally exactly on a stop)", () => {
     const bbox: [number, number, number, number] = [0, 0, 1, 1];
     const grid = buildProbabilityGrid({
       rows: 1,
       cols: 1,
       resolutionDegrees: 1,
       bbox,
-      cells: [cellCenterFixture(0, 0, 1, 1, bbox, 0.5)], // halfway between the 0.4 (cyan) and 0.6 (lime) stops
+      cells: [cellCenterFixture(0, 0, 1, 1, bbox, 0.375)], // halfway between the 0.25 (green) and 0.5 (yellow) stops
       landMask: allWaterMask(1, 1, 1),
     });
 
     const image = buildProbabilityRasterImage(grid);
 
-    expect(Array.from(image.pixels.slice(0, 4))).toEqual([0, 255, 128, 255]);
+    // t = 0.5: r = lerp(0,255,0.5) = 128, g = lerp(200,255,0.5) = 228,
+    // b = 0, alpha = 0.5 + (0.75-0.5)*0.5 = 0.625 -> round(0.625*255) = 159.
+    expect(Array.from(image.pixels.slice(0, 4))).toEqual([128, 228, 0, 159]);
   });
 
   it("smoothly interpolates probability between adjacent cells, producing a genuine gradient across the boundary rather than a hard step (regression: an earlier version nearest-neighbor-duplicated each cell's color across its whole supersampled block, which looked identical to the naive per-cell circle rendering it was meant to improve on)", () => {
@@ -162,17 +164,23 @@ describe("buildProbabilityRasterImage", () => {
     });
 
     const image = buildProbabilityRasterImage(grid); // superCols = 8, superRows = 4
-    const reds = Array.from({ length: 8 }, (_, c) => image.pixels[c * 4]!);
+    // Sampling alpha (index 3), not red: both cells' probabilities (0 and
+    // 0.2) fall inside the ramp's single green segment (stops 0-0.25),
+    // where RGB is flat — only alpha actually varies across that span, so
+    // it's the channel that will actually catch a hard nearest-neighbor
+    // step here, and it's monotonic across the *whole* ramp regardless of
+    // which segment a given fixture's probabilities land in.
+    const alphas = Array.from({ length: 8 }, (_, c) => image.pixels[c * 4 + 3]!);
 
     // A hard nearest-neighbor step would produce exactly 2 distinct
     // values (a flat block, then another flat block); real bilinear
     // blending produces a smoothly increasing ramp with more steps than
     // that, monotonically non-decreasing left to right (probability only
     // increases from cell 0 to cell 1 in this fixture).
-    for (let c = 1; c < reds.length; c++) {
-      expect(reds[c]).toBeGreaterThanOrEqual(reds[c - 1]!);
+    for (let c = 1; c < alphas.length; c++) {
+      expect(alphas[c]).toBeGreaterThanOrEqual(alphas[c - 1]!);
     }
-    expect(new Set(reds).size).toBeGreaterThan(2);
+    expect(new Set(alphas).size).toBeGreaterThan(2);
   });
 
   it("interpolates in BOTH directions at once (row and column), at an exact hand-computed value — not just 'monotonic and more than 2 values,' which a broken row-direction blend could still satisfy (a review pass proved this by temporarily gutting fy-direction blending: all prior tests here still passed)", () => {
@@ -197,10 +205,11 @@ describe("buildProbabilityRasterImage", () => {
     // 62.5% of the way from row/col 0 to row/col 1 in BOTH directions at
     // once. Hand-computed: top = 0 + (0.2-0)*0.625 = 0.125,
     // bottom = 0.4 + (0.6-0.4)*0.625 = 0.525,
-    // result = 0.125 + (0.525-0.125)*0.625 = 0.375 — which falls between
-    // the 0.2 (royalblue) and 0.4 (cyan) color-ramp stops at t=0.875.
+    // result = 0.125 + (0.525-0.125)*0.625 = 0.375 — the same probability,
+    // and so the same hand-computed color/alpha, as the "true midpoint"
+    // test above: [128, 228, 0, 159].
     const idx = (4 * 8 + 4) * 4;
-    expect(Array.from(image.pixels.slice(idx, idx + 4))).toEqual([8, 236, 251, 255]);
+    expect(Array.from(image.pixels.slice(idx, idx + 4))).toEqual([128, 228, 0, 159]);
   });
 
   it("falls back to a cell's own flat value (not a fabricated blend) when one of its bilinear neighbors is real nodata, rather than interpolating across a genuine gap", () => {
@@ -223,9 +232,14 @@ describe("buildProbabilityRasterImage", () => {
     // toward a neighbor that has no real data.
     const centerIdx = (1 * 6 + 1) * 4; // roughly the top-left native cell's own center pixel
     const [r, g, b, a] = image.pixels.slice(centerIdx, centerIdx + 4);
-    expect(a).toBe(255);
-    // probability 0.2 lands exactly on a color-ramp stop (royalblue).
-    expect([r, g, b]).toEqual([65, 105, 225]);
+    // probability 0.2 is 80% of the way from the ramp's transparent green
+    // floor (stop 0) to its half-opacity green stop (0.25): alpha =
+    // round(0.8 * 0.5 * 255) = 102 — real, modest confidence renders
+    // faint, never the fully-opaque flat value a binary "any real data is
+    // opaque" rule would have given, and never nodata's alpha 0 either,
+    // proving this is the cell's own real value, not a fallback default.
+    expect(a).toBe(102);
+    expect([r, g, b]).toEqual([0, 200, 0]);
   });
 
   it("treats a non-finite probability (NaN/Infinity) as nodata — transparent, never fabricating a color", () => {

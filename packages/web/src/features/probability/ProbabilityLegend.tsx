@@ -4,10 +4,13 @@ import styles from "./ProbabilityLegend.module.css";
 /**
  * Built from the raster's own `COLOR_STOPS`, not a hand-copied gradient —
  * so this can never silently drift out of sync with the colors
- * `buildProbabilityRasterImage` actually paints.
+ * `buildProbabilityRasterImage` actually paints. Includes each stop's
+ * `alpha` (not just its RGB) so the legend itself fades toward
+ * transparent at the low end exactly like the map does — otherwise it
+ * would show a solid "low" color the map never actually draws.
  */
 const GRADIENT = `linear-gradient(to right, ${COLOR_STOPS.map(
-  ({ stop, rgb }) => `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]}) ${stop * 100}%`,
+  ({ stop, rgb, alpha }) => `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha}) ${stop * 100}%`,
 ).join(", ")})`;
 
 /**

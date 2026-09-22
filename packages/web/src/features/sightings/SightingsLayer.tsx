@@ -293,7 +293,16 @@ export function SightingsLayer({ timeWindow, date }: SightingsLayerProps) {
         return;
       }
 
-      setSelection({ type: "location", lngLat: e.lngLat.toArray() as [number, number] });
+      // Neither a pin nor a cluster was hit. If a card is already open,
+      // this tap is a dismiss (matching how tapping a dialog's backdrop
+      // closes it) — it must not swap in a fresh seasonality card for
+      // wherever was just tapped. Only open one when nothing was open to
+      // begin with. The functional setState form reads the true latest
+      // selection at click time regardless of when this closure was
+      // created, so `selection` doesn't need to be a dependency here.
+      setSelection((current) =>
+        current ? null : { type: "location", lngLat: e.lngLat.toArray() as [number, number] },
+      );
     };
 
     map.on("click", handleClick);
