@@ -1,12 +1,9 @@
-import { CA_COAST_BBOX, SPECIES, SPECIES_SCIENTIFIC_NAMES, type Sighting } from "@spout/contracts";
+import { CA_COAST_BBOX, SPECIES, SPECIES_SCIENTIFIC_NAMES, type Bbox, type Sighting } from "@spout/contracts";
 import { z } from "zod";
 import { normalizeGbifRecord, type GbifOccurrence } from "../normalize/sighting.js";
 import { fetchWithBackoff, type FetchWithBackoffOptions } from "./http.js";
 
 export const GBIF_SEARCH_URL = "https://api.gbif.org/v1/occurrence/search";
-const [minLon, minLat, maxLon, maxLat] = CA_COAST_BBOX;
-const CA_BBOX_LAT = `${minLat},${maxLat}`;
-const CA_BBOX_LON = `${minLon},${maxLon}`;
 /** GBIF's documented maximum page size. */
 const PAGE_LIMIT = 300;
 /** GBIF hard-errors (HTTP 400) past this offset. A bounded date range (see `fetchGbifSightings`) keeps real per-species counts far below it; this is a safety net against ever looping past it. */
@@ -29,6 +26,7 @@ const GbifPageSchema = z.object({
 
 async function fetchSpeciesSightings(
   scientificName: string,
+  bbox: Bbox,
   sinceDate: string,
   untilDate: string,
   fetchImpl: typeof fetch,
@@ -36,6 +34,7 @@ async function fetchSpeciesSightings(
 ): Promise<Sighting[]> {
   const sightings: Sighting[] = [];
   let offset = 0;
+  const [minLon, minLat, maxLon, maxLat] = bbox;
 
   for (;;) {
     if (offset > MAX_OFFSET) {
@@ -46,8 +45,8 @@ async function fetchSpeciesSightings(
 
     const params = new URLSearchParams({
       scientificName,
-      decimalLatitude: CA_BBOX_LAT,
-      decimalLongitude: CA_BBOX_LON,
+      decimalLatitude: `${minLat},${maxLat}`,
+      decimalLongitude: `${minLon},${maxLon}`,
       hasCoordinate: "true",
       eventDate: `${sinceDate},${untilDate}`,
       limit: String(PAGE_LIMIT),
@@ -78,6 +77,8 @@ export interface FetchGbifSightingsOptions {
   sinceDate: string;
   /** YYYY-MM-DD — defaults to today. */
   untilDate?: string;
+  /** Defaults to `CA_COAST_BBOX` — the persistent refresh pipeline (`sightingsRefresh.ts`) never overrides this; only the on-demand global path (`store/globalSightingsCache.ts`) does. */
+  bbox?: Bbox;
   fetchImpl?: typeof fetch;
   /** Overridable for tests, so retry backoff doesn't actually wait — see `fetchWithBackoff`. */
   backoffDelayMs?: FetchWithBackoffOptions["delayMs"];
@@ -85,9 +86,9 @@ export interface FetchGbifSightingsOptions {
 
 /**
  * Fetches, paginates, and normalizes GBIF occurrence records for all
- * four tracked species within `[sinceDate, untilDate]`, across the
- * California coast bbox. Queries run per-species in parallel — GBIF has
- * no way to query multiple scientific names in one request.
+ * four tracked species within `[sinceDate, untilDate]` and `bbox`.
+ * Queries run per-species in parallel — GBIF has no way to query
+ * multiple scientific names in one request.
  *
  * Uses `Promise.allSettled`, not `Promise.all`: one species failing
  * (a persistent network error, a malformed response envelope, the
@@ -99,6 +100,7 @@ export interface FetchGbifSightingsOptions {
 export async function fetchGbifSightings({
   sinceDate,
   untilDate = new Date().toISOString().slice(0, 10),
+  bbox = CA_COAST_BBOX,
   fetchImpl = fetch,
   backoffDelayMs,
 }: FetchGbifSightingsOptions): Promise<Sighting[]> {
@@ -106,6 +108,7 @@ export async function fetchGbifSightings({
     SPECIES.map((species) =>
       fetchSpeciesSightings(
         SPECIES_SCIENTIFIC_NAMES[species],
+        bbox,
         sinceDate,
         untilDate,
         fetchImpl,

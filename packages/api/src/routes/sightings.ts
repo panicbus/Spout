@@ -1,10 +1,12 @@
 import {
   SightingsQuerySchema,
   decodeSightingsQueryParams,
+  type Sighting,
   type SightingsQuery,
 } from "@spout/contracts";
 import type Database from "better-sqlite3";
 import { Hono } from "hono";
+import { GlobalSightingsCache, isWithinCaCoastBbox } from "../store/globalSightingsCache.js";
 import { querySightings } from "../store/sightingsDb.js";
 import type { TtlCache } from "../store/ttlCache.js";
 import type { SightingsRefreshResult } from "../store/sightingsRefresh.js";
@@ -12,6 +14,16 @@ import { sinceDateForWindow } from "../timeWindow.js";
 
 function parseQuery(url: URL): SightingsQuery {
   return SightingsQuerySchema.parse(decodeSightingsQueryParams(url.searchParams));
+}
+
+/** The on-demand global path fetches all species/tiers for its bbox+window (`GlobalSightingsCache` caches per that pair, not per filter combination) — species/tier/commercialOnly filters that the persistent store applies in SQL are applied here in memory instead. */
+function applyFilters(sightings: Sighting[], query: SightingsQuery): Sighting[] {
+  return sightings.filter((s) => {
+    if (query.species && !query.species.includes(s.species)) return false;
+    if (query.tier && !query.tier.includes(s.tier)) return false;
+    if (query.commercialOnly && !s.attribution.license.commercialUse) return false;
+    return true;
+  });
 }
 
 /**
@@ -47,10 +59,22 @@ function parseQuery(url: URL): SightingsQuery {
  * upstream happened to answer faster. Each is still independently
  * try/caught so one failing doesn't block the other from having a
  * chance to succeed.
+ *
+ * A `bbox` that extends outside `CA_COAST_BBOX` never touches `db` at
+ * all (Phase 2, "global scope" — see `globalSightingsCache.ts`'s doc
+ * comment for why the persistent store was never a fit for this: GBIF's
+ * own 100,001-offset pagination cap makes backfilling the whole world
+ * genuinely infeasible for a popular species). It's answered from
+ * `globalCache` instead — same never-503 philosophy as the CA path: a
+ * failed live fetch with nothing cached yet for that cell logs and
+ * returns `200 []`, read the same as "nothing here (yet)" rather than
+ * surfaced as an error for what is, today, a supplementary layer outside
+ * California.
  */
 export function createSightingsRoute(
   db: Database.Database,
   refreshCaches: { name: string; cache: TtlCache<SightingsRefreshResult> }[],
+  globalCache: GlobalSightingsCache = new GlobalSightingsCache(),
 ) {
   return new Hono().get("/api/sightings", async (c) => {
     let query: SightingsQuery;
@@ -58,6 +82,16 @@ export function createSightingsRoute(
       query = parseQuery(new URL(c.req.url));
     } catch {
       return c.json({ error: "invalid query parameters" }, 400);
+    }
+
+    if (query.bbox && !isWithinCaCoastBbox(query.bbox)) {
+      try {
+        const sightings = await globalCache.get(query.bbox, query.window);
+        return c.json(applyFilters(sightings, query));
+      } catch (error) {
+        console.error("GET /api/sightings (on-demand global path) failed:", error);
+        return c.json([]);
+      }
     }
 
     for (const { name, cache } of refreshCaches) {

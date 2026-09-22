@@ -9,8 +9,10 @@ import { healthRoute } from "./routes/health.js";
 import { createProbabilityRoute } from "./routes/probability.js";
 import { createSeasonalityRoute } from "./routes/seasonality.js";
 import { createSightingsRoute } from "./routes/sightings.js";
+import { fetchGbifSightings } from "./sources/gbif.js";
 import { fetchSeasonality } from "./sources/gbifSeasonality.js";
 import { fetchLatestProbabilityGrid } from "./sources/whalewatch.js";
+import { GlobalSightingsCache } from "./store/globalSightingsCache.js";
 import { createINaturalistRefreshCache } from "./store/inaturalistRefresh.js";
 import { ProbabilityCache } from "./store/probabilityCache.js";
 import { SeasonalityCache } from "./store/seasonalityCache.js";
@@ -65,6 +67,8 @@ export interface CreateAppOptions {
   sightingsDb?: Database.Database;
   /** Overridable for tests; defaults to the real GBIF-fetching fetchSeasonality. */
   seasonalityFetcher?: typeof fetchSeasonality;
+  /** Overridable for tests; defaults to the real GBIF-fetching fetchGbifSightings (Phase 2's on-demand global path). */
+  globalSightingsFetcher?: typeof fetchGbifSightings;
 }
 
 /**
@@ -104,14 +108,18 @@ export function createApp(options: CreateAppOptions = {}) {
   app.route("/", createSeasonalityRoute(seasonalityCache));
   app.route(
     "/",
-    createSightingsRoute(sightingsDb, [
-      { name: "GBIF", cache: sightingsRefreshCache },
-      // Runs second deliberately — see createSightingsRoute's doc
-      // comment: whichever refresh's write lands last wins the
-      // converged-id upsert race, and iNaturalist-direct's fields are
-      // the more authoritative copy for any observation both sources see.
-      { name: "iNaturalist", cache: inaturalistRefreshCache },
-    ]),
+    createSightingsRoute(
+      sightingsDb,
+      [
+        { name: "GBIF", cache: sightingsRefreshCache },
+        // Runs second deliberately — see createSightingsRoute's doc
+        // comment: whichever refresh's write lands last wins the
+        // converged-id upsert race, and iNaturalist-direct's fields are
+        // the more authoritative copy for any observation both sources see.
+        { name: "iNaturalist", cache: inaturalistRefreshCache },
+      ],
+      new GlobalSightingsCache(options.globalSightingsFetcher),
+    ),
   );
   return app;
 }

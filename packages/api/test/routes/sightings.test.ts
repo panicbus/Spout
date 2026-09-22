@@ -187,4 +187,80 @@ describe("GET /api/sightings", () => {
 
     expect(res.status).toBe(200);
   });
+
+  describe("bbox outside California (Phase 2: on-demand global path)", () => {
+    it("answers from the live global fetcher instead of the store, and never touches the CA refresh caches", async () => {
+      const db = openSightingsDb(":memory:");
+      const sightingsFetcher = vi.fn().mockResolvedValue([]); // the CA-scoped refresh — must not be called
+      const globalSightingsFetcher = vi.fn().mockResolvedValue([buildSighting({ id: "gbif:sydney" })]);
+      const app = createApp({
+        sightingsDb: db,
+        sightingsFetcher,
+        inaturalistFetcher: vi.fn().mockResolvedValue([]),
+        globalSightingsFetcher,
+      });
+
+      const res = await app.request("/api/sightings?bbox=150,-34,152,-33");
+
+      expect(res.status).toBe(200);
+      const body = SightingsListSchema.parse(await res.json());
+      expect(body.map((s) => s.id)).toEqual(["gbif:sydney"]);
+      expect(sightingsFetcher).not.toHaveBeenCalled();
+      expect(globalSightingsFetcher).toHaveBeenCalledWith(
+        expect.objectContaining({ bbox: [150, -34, 152, -33] }),
+      );
+    });
+
+    it("still filters the live result by species/tier/commercialOnly in memory", async () => {
+      const db = openSightingsDb(":memory:");
+      const app = createApp({
+        sightingsDb: db,
+        inaturalistFetcher: vi.fn().mockResolvedValue([]),
+        globalSightingsFetcher: vi.fn().mockResolvedValue([
+          buildSighting({ id: "a", species: "orca" }),
+          buildSighting({ id: "b", species: "gray-whale" }),
+        ]),
+      });
+
+      const res = await app.request("/api/sightings?bbox=150,-34,152,-33&species=orca");
+
+      const body = SightingsListSchema.parse(await res.json());
+      expect(body.map((s) => s.id)).toEqual(["a"]);
+    });
+
+    it("returns 200 [] (not 503) when the live fetch fails, logging instead of erroring — a sparse/unavailable region outside the persistent pipeline stays non-scary", async () => {
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+      const db = openSightingsDb(":memory:");
+      const app = createApp({
+        sightingsDb: db,
+        inaturalistFetcher: vi.fn().mockResolvedValue([]),
+        globalSightingsFetcher: vi.fn().mockRejectedValue(new Error("GBIF is down")),
+      });
+
+      const res = await app.request("/api/sightings?bbox=150,-34,152,-33");
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual([]);
+      expect(consoleError).toHaveBeenCalled();
+      consoleError.mockRestore();
+    });
+
+    it("a bbox that stays within California still uses the persistent store, not the global path", async () => {
+      const db = openSightingsDb(":memory:");
+      upsertSightings(db, [buildSighting({ id: "ca-1", lat: 36.5, lon: -122.1 })]);
+      const globalSightingsFetcher = vi.fn();
+      const app = createApp({
+        sightingsDb: db,
+        sightingsFetcher: vi.fn().mockResolvedValue([]),
+        inaturalistFetcher: vi.fn().mockResolvedValue([]),
+        globalSightingsFetcher,
+      });
+
+      const res = await app.request("/api/sightings?bbox=-123,36,-121,37");
+
+      const body = SightingsListSchema.parse(await res.json());
+      expect(body.map((s) => s.id)).toEqual(["ca-1"]);
+      expect(globalSightingsFetcher).not.toHaveBeenCalled();
+    });
+  });
 });

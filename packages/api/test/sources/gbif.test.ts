@@ -146,6 +146,30 @@ describe("fetchGbifSightings", () => {
     expect(consoleError).toHaveBeenCalled();
     consoleError.mockRestore();
   });
+
+  it("queries a given bbox instead of the CA_COAST_BBOX default, for the on-demand global path (Phase 2)", async () => {
+    const fetchImpl = vi.fn(async (url: string | URL) => {
+      const params = new URL(url.toString()).searchParams;
+      if (
+        params.get("scientificName")?.includes("musculus") &&
+        params.get("decimalLatitude") === "-34,-33" &&
+        params.get("decimalLongitude") === "150,152"
+      ) {
+        return new Response(
+          JSON.stringify({ offset: 0, endOfRecords: true, results: [recordFixture(1)] }),
+        );
+      }
+      return new Response(JSON.stringify(emptyPage()));
+    });
+
+    const sightings = await fetchGbifSightings({
+      sinceDate: "2026-08-01",
+      bbox: [150, -34, 152, -33], // Sydney Harbour, not CA
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    expect(sightings.map((s) => s.id)).toEqual(["gbif:1"]);
+  });
 });
 
 function recordFixture(key: number) {
