@@ -45,6 +45,8 @@ export const SightingSchema = z.object({
   positionalUncertaintyMeters: z.number().nonnegative().optional(),
   /** A real, hotlinked photo URL from the source record, when one exists (GBIF's Multimedia extension, iNaturalist's `photos[]`) — not every sighting has one. */
   photoUrl: z.string().url().optional(),
+  /** A direct link to this individual whale's own encounter page on Happywhale (sighting history, photos, sometimes a name) — present only when the source record is Happywhale-published (see `normalize/sighting.ts`'s `happywhaleUrlFromCatalogNumber`). Not every sighting has one. */
+  happywhaleUrl: z.string().url().optional(),
   attribution: AttributionSchema,
 });
 export type Sighting = z.infer<typeof SightingSchema>;

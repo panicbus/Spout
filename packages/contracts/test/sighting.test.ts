@@ -60,4 +60,15 @@ describe("SightingSchema", () => {
       SightingSchema.parse(validSighting({ positionalUncertaintyMeters: -5 })),
     ).toThrow();
   });
+
+  it("accepts an optional happywhaleUrl", () => {
+    const sighting = SightingSchema.parse(
+      validSighting({ happywhaleUrl: "https://happywhale.com/encounter/623491" }),
+    );
+    expect(sighting.happywhaleUrl).toBe("https://happywhale.com/encounter/623491");
+  });
+
+  it("rejects a non-URL happywhaleUrl", () => {
+    expect(() => SightingSchema.parse(validSighting({ happywhaleUrl: "not-a-url" }))).toThrow();
+  });
 });

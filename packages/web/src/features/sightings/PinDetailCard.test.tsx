@@ -45,6 +45,25 @@ describe("PinDetailCard", () => {
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
   });
 
+  it("shows the Happywhale callout, linking out, when happywhaleUrl is present", () => {
+    render(
+      <PinDetailCard
+        sighting={buildSighting({ happywhaleUrl: "https://happywhale.com/encounter/623491" })}
+        anchor={ANCHOR}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByRole("link", { name: /seen before/i })).toHaveAttribute(
+      "href",
+      "https://happywhale.com/encounter/623491",
+    );
+  });
+
+  it("shows no Happywhale callout when happywhaleUrl is absent", () => {
+    render(<PinDetailCard sighting={buildSighting({ happywhaleUrl: undefined })} anchor={ANCHOR} onClose={() => {}} />);
+    expect(screen.queryByText(/seen before/i)).not.toBeInTheDocument();
+  });
+
   it("shows a species icon distinct per species, presentational (no redundant alt text next to the visible heading)", () => {
     const { container, rerender } = render(
       <PinDetailCard sighting={buildSighting({ species: "orca" })} anchor={ANCHOR} onClose={() => {}} />,

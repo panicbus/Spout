@@ -1,0 +1,78 @@
+.chart {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.2rem;
+}
+
+.monthLabels {
+  display: flex;
+  /* Lines up with .bars below: same left offset (icon + label width) and
+     the same 12-column grid, so each initial sits directly above its bar. */
+  padding-left: calc(20px + 4.6rem + 0.4rem + 0.4rem);
+  gap: 1px;
+}
+
+.monthLabels span {
+  flex: 1;
+  text-align: center;
+  font-size: 0.6rem;
+  color: #aaa;
+}
+
+.currentMonthLabel {
+  color: #2a6f97 !important;
+  font-weight: 700;
+}
+
+.speciesRow {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.speciesIcon {
+  display: block;
+  height: 20px;
+  width: auto;
+  flex: none;
+}
+
+.speciesLabel {
+  flex: none;
+  width: 4.6rem;
+  font-size: 0.72rem;
+  color: #555;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bars {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 28px;
+}
+
+.bar {
+  flex: 1;
+  min-width: 0;
+  height: 4%;
+  background: #2a6f97;
+  border-radius: 1px;
+}
+
+/* A month with too few reports to say anything (share omitted, see ADR
+   0006) — a flat, muted placeholder, never a fabricated zero-height bar
+   indistinguishable from "genuinely never seen." */
+.barEmpty {
+  height: 100%;
+  background: repeating-linear-gradient(45deg, #e5e5e5, #e5e5e5 2px, #f2f2f2 2px, #f2f2f2 4px);
+}
+
+.barCurrent {
+  outline: 2px solid #2a6f97;
+  outline-offset: 1px;
+}

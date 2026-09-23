@@ -26,6 +26,8 @@ export interface GbifOccurrence {
   occurrenceID?: string;
   /** GBIF's Darwin Core Multimedia extension — `type: "StillImage"` entries carry a real, full-size photo URL in `identifier`. */
   media?: { type: string; identifier: string }[];
+  /** Freeform per-dataset text in general — but Happywhale's own GBIF datasets consistently use it for a direct link to that individual whale's encounter page (verified live across all 4 tracked species) — see `happywhaleUrlFromCatalogNumber` below. */
+  catalogNumber?: string;
 }
 
 /**
@@ -45,6 +47,29 @@ const INATURALIST_OBSERVATION_URL = /^https?:\/\/www\.inaturalist\.org\/observat
 
 function inaturalistIdFromOccurrenceId(occurrenceID: string | undefined): string | undefined {
   return occurrenceID?.match(INATURALIST_OBSERVATION_URL)?.[1];
+}
+
+/**
+ * Happywhale publishes many species/ocean-scoped GBIF datasets (e.g.
+ * "Happywhale - Humpback whale in North Atlantic Ocean"), not one — and
+ * `catalogNumber` carries two different real URL shapes across them,
+ * both verified live (a 20-record sample per dataset, across
+ * humpback/blue/killer/gray whale): most records link to that one
+ * `/encounter/<id>` (a single sighting event), but a real minority
+ * (seen in the humpback North Atlantic dataset) instead link to
+ * `/individual/<id>;enc=<id>` — that whale's own persistent profile
+ * page, showing every encounter with it, not just this one. Both
+ * resolve to a real page (curl-confirmed HTTP 200). `catalogNumber` is
+ * a freeform Darwin Core field in general (other datasets put arbitrary
+ * text there), so this validates the shape rather than trusting it
+ * blindly — mirroring `inaturalistIdFromOccurrenceId`'s
+ * regex-over-a-known-field pattern above. Returns the URL itself (not
+ * just an id) since that's exactly what the UI needs to link out.
+ */
+const HAPPYWHALE_URL = /^https?:\/\/(www\.)?happywhale\.com\/(encounter\/\d+|individual\/\d+;enc=\d+)$/;
+
+function happywhaleUrlFromCatalogNumber(catalogNumber: string | undefined): string | undefined {
+  return catalogNumber && HAPPYWHALE_URL.test(catalogNumber) ? catalogNumber : undefined;
 }
 
 /**
@@ -146,6 +171,7 @@ export function normalizeGbifRecord(record: GbifOccurrence): Sighting | null {
       record.coordinateUncertaintyInMeters >= OBSCURED_UNCERTAINTY_THRESHOLD_M,
     positionalUncertaintyMeters: record.coordinateUncertaintyInMeters,
     photoUrl: record.media?.find((item) => item.type === "StillImage")?.identifier,
+    happywhaleUrl: happywhaleUrlFromCatalogNumber(record.catalogNumber),
     attribution: {
       datasetName: record.datasetName,
       datasetId: record.datasetKey,

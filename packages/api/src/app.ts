@@ -10,7 +10,7 @@ import { createProbabilityRoute } from "./routes/probability.js";
 import { createSeasonalityRoute } from "./routes/seasonality.js";
 import { createSightingsRoute } from "./routes/sightings.js";
 import { fetchGbifSightings } from "./sources/gbif.js";
-import type { SeasonalityFetcher } from "./sources/gbifSeasonality.js";
+import type { SeasonalityFetcher, SeasonalityYearFetcher } from "./sources/gbifSeasonality.js";
 import { fetchLatestProbabilityGrid } from "./sources/whalewatch.js";
 import { GlobalSightingsCache } from "./store/globalSightingsCache.js";
 import { createINaturalistRefreshCache } from "./store/inaturalistRefresh.js";
@@ -67,6 +67,8 @@ export interface CreateAppOptions {
   sightingsDb?: Database.Database;
   /** Overridable for tests; defaults to the real fetchSeasonalityWithDensity (GBIF share + ECMM density enrichment). */
   seasonalityFetcher?: SeasonalityFetcher;
+  /** Overridable for tests; defaults to the real fetchSeasonalityYear (GBIF share only, all 12 months). */
+  seasonalityYearFetcher?: SeasonalityYearFetcher;
   /** Overridable for tests; defaults to the real GBIF-fetching fetchGbifSightings (Phase 2's on-demand global path). */
   globalSightingsFetcher?: typeof fetchGbifSightings;
 }
@@ -101,7 +103,10 @@ export function createApp(options: CreateAppOptions = {}) {
     fetcher: options.inaturalistFetcher,
   });
 
-  const seasonalityCache = new SeasonalityCache({ fetcher: options.seasonalityFetcher });
+  const seasonalityCache = new SeasonalityCache({
+    fetcher: options.seasonalityFetcher,
+    yearFetcher: options.seasonalityYearFetcher,
+  });
 
   app.route("/", healthRoute);
   app.route("/", createProbabilityRoute(probabilityCache));

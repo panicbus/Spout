@@ -60,6 +60,37 @@ describe("normalizeGbifRecord", () => {
     ).toBeUndefined();
   });
 
+  it("extracts happywhaleUrl from a real-shaped Happywhale catalogNumber", () => {
+    const sighting = normalizeGbifRecord(
+      validRecord({ catalogNumber: "https://happywhale.com/encounter/623491" }),
+    );
+    expect(sighting?.happywhaleUrl).toBe("https://happywhale.com/encounter/623491");
+  });
+
+  it("leaves happywhaleUrl undefined for a non-Happywhale or malformed catalogNumber, rather than trusting GBIF's freeform field blindly", () => {
+    expect(normalizeGbifRecord(validRecord({ catalogNumber: undefined }))?.happywhaleUrl).toBeUndefined();
+    expect(
+      normalizeGbifRecord(validRecord({ catalogNumber: "SOME-MUSEUM-CATALOG-4471" }))?.happywhaleUrl,
+    ).toBeUndefined();
+    expect(
+      normalizeGbifRecord(validRecord({ catalogNumber: "https://example.com/encounter/623491" }))?.happywhaleUrl,
+    ).toBeUndefined();
+  });
+
+  it("accepts a www-prefixed Happywhale URL too", () => {
+    const sighting = normalizeGbifRecord(
+      validRecord({ catalogNumber: "https://www.happywhale.com/encounter/623491" }),
+    );
+    expect(sighting?.happywhaleUrl).toBe("https://www.happywhale.com/encounter/623491");
+  });
+
+  it("accepts Happywhale's other real catalogNumber shape too — a link to the individual whale's own persistent profile page (/individual/<id>;enc=<id>), not just a single encounter (verified live: present in a real sample of the humpback North Atlantic dataset)", () => {
+    const sighting = normalizeGbifRecord(
+      validRecord({ catalogNumber: "https://happywhale.com/individual/126074;enc=623368" }),
+    );
+    expect(sighting?.happywhaleUrl).toBe("https://happywhale.com/individual/126074;enc=623368");
+  });
+
   it("maps CC-BY-NC to commercialUse: false", () => {
     const sighting = normalizeGbifRecord(
       validRecord({ license: "http://creativecommons.org/licenses/by-nc/4.0/legalcode" }),

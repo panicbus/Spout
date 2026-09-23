@@ -46,3 +46,29 @@ export const SeasonalityResponseSchema = z.object({
   species: z.array(SpeciesSeasonalitySchema),
 });
 export type SeasonalityResponse = z.infer<typeof SeasonalityResponseSchema>;
+
+/** Same lat/lon/radius as `SeasonalityQuerySchema`, minus `date` — a year view has no "today," it answers for the whole calendar at once. */
+export const SeasonalityYearQuerySchema = z.object({
+  lat: z.coerce.number().min(-90).max(90),
+  lon: z.coerce.number().min(-180).max(180),
+  radiusKm: z.coerce.number().positive().default(50),
+});
+export type SeasonalityYearQuery = z.infer<typeof SeasonalityYearQuerySchema>;
+
+/** One month's share/sampleSize — the same honesty rule as `SpeciesSeasonalitySchema.share` above, applied independently per month: a well-sampled July next to an unsampled February is real seasonality, not a bug. */
+const MonthShareSchema = z.object({
+  month: z.number().int().min(1).max(12),
+  share: z.number().min(0).max(1).optional(),
+  sampleSize: z.number().int().nonnegative(),
+});
+
+const SpeciesSeasonalityYearSchema = z.object({
+  species: SpeciesSchema,
+  /** Always 12 entries, months 1-12, one per calendar month. */
+  months: z.array(MonthShareSchema),
+});
+
+export const SeasonalityYearResponseSchema = z.object({
+  species: z.array(SpeciesSeasonalityYearSchema),
+});
+export type SeasonalityYearResponse = z.infer<typeof SeasonalityYearResponseSchema>;

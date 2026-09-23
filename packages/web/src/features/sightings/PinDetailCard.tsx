@@ -102,6 +102,17 @@ export const PinDetailCard = forwardRef<HTMLDivElement, PinDetailCardProps>(func
               />
             </div>
 
+            {sighting.happywhaleUrl && (
+              <a
+                className={styles.happywhaleCallout}
+                href={sighting.happywhaleUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                This whale has been seen before — view its sighting history on Happywhale
+              </a>
+            )}
+
             <dl className={styles.meta}>
               <div className={styles.metaRow}>
                 <dt>observed</dt>

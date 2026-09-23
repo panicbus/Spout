@@ -42,6 +42,9 @@ function migrate(db: Database.Database): void {
   if (!columns.some((column) => column.name === "photo_url")) {
     db.exec("ALTER TABLE sightings ADD COLUMN photo_url TEXT");
   }
+  if (!columns.some((column) => column.name === "happywhale_url")) {
+    db.exec("ALTER TABLE sightings ADD COLUMN happywhale_url TEXT");
+  }
 }
 
 /**
@@ -70,6 +73,7 @@ interface SightingRow {
   coordinates_obscured: number;
   positional_uncertainty_m: number | null;
   photo_url: string | null;
+  happywhale_url: string | null;
   dataset_name: string;
   dataset_id: string;
   publisher_name: string;
@@ -94,6 +98,7 @@ function rowToSighting(row: SightingRow): Sighting {
     coordinatesObscured: Boolean(row.coordinates_obscured),
     positionalUncertaintyMeters: row.positional_uncertainty_m ?? undefined,
     photoUrl: row.photo_url ?? undefined,
+    happywhaleUrl: row.happywhale_url ?? undefined,
     attribution: {
       datasetName: row.dataset_name,
       datasetId: row.dataset_id,
@@ -119,12 +124,12 @@ function rowToSighting(row: SightingRow): Sighting {
 const UPSERT_SQL = `
   INSERT OR REPLACE INTO sightings (
     id, species, lat, lon, observed_at, tier, source_api, verification,
-    coordinates_obscured, positional_uncertainty_m, photo_url,
+    coordinates_obscured, positional_uncertainty_m, photo_url, happywhale_url,
     dataset_name, dataset_id, publisher_name, publisher_id, citation, attribution_url,
     license_id, license_url, license_commercial_use
   ) VALUES (
     @id, @species, @lat, @lon, @observedAt, @tier, @sourceApi, @verification,
-    @coordinatesObscured, @positionalUncertaintyMeters, @photoUrl,
+    @coordinatesObscured, @positionalUncertaintyMeters, @photoUrl, @happywhaleUrl,
     @datasetName, @datasetId, @publisherName, @publisherId, @citation, @attributionUrl,
     @licenseId, @licenseUrl, @licenseCommercialUse
   )
@@ -150,6 +155,7 @@ export function upsertSightings(db: Database.Database, sightings: Sighting[]): v
         coordinatesObscured: sighting.coordinatesObscured ? 1 : 0,
         positionalUncertaintyMeters: sighting.positionalUncertaintyMeters ?? null,
         photoUrl: sighting.photoUrl ?? null,
+        happywhaleUrl: sighting.happywhaleUrl ?? null,
         datasetName: sighting.attribution.datasetName,
         datasetId: sighting.attribution.datasetId,
         publisherName: sighting.attribution.publisherName,

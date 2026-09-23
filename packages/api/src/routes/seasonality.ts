@@ -1,9 +1,13 @@
-import { SeasonalityQuerySchema, type SeasonalityQuery } from "@spout/contracts";
+import { SeasonalityQuerySchema, SeasonalityYearQuerySchema, type SeasonalityQuery, type SeasonalityYearQuery } from "@spout/contracts";
 import { Hono } from "hono";
 import type { SeasonalityCache } from "../store/seasonalityCache.js";
 
 function parseQuery(url: URL): SeasonalityQuery {
   return SeasonalityQuerySchema.parse(Object.fromEntries(url.searchParams));
+}
+
+function parseYearQuery(url: URL): SeasonalityYearQuery {
+  return SeasonalityYearQuerySchema.parse(Object.fromEntries(url.searchParams));
 }
 
 /** The calendar month (1-12) of a YYYY-MM-DD date string — parsed from the string directly, not via `new Date(date).getUTCMonth()`, so this never depends on the server's own local timezone. */
@@ -18,20 +22,37 @@ function monthOf(date: string): number {
  * location rather than from a global backfill.
  */
 export function createSeasonalityRoute(cache: SeasonalityCache) {
-  return new Hono().get("/api/seasonality", async (c) => {
-    let query: SeasonalityQuery;
-    try {
-      query = parseQuery(new URL(c.req.url));
-    } catch {
-      return c.json({ error: "invalid query parameters" }, 400);
-    }
+  return new Hono()
+    .get("/api/seasonality", async (c) => {
+      let query: SeasonalityQuery;
+      try {
+        query = parseQuery(new URL(c.req.url));
+      } catch {
+        return c.json({ error: "invalid query parameters" }, 400);
+      }
 
-    try {
-      const result = await cache.get(query.lat, query.lon, monthOf(query.date), query.radiusKm);
-      return c.json(result);
-    } catch (error) {
-      console.error("GET /api/seasonality failed:", error);
-      return c.json({ error: "seasonality data is currently unavailable" }, 503);
-    }
-  });
+      try {
+        const result = await cache.get(query.lat, query.lon, monthOf(query.date), query.radiusKm);
+        return c.json(result);
+      } catch (error) {
+        console.error("GET /api/seasonality failed:", error);
+        return c.json({ error: "seasonality data is currently unavailable" }, 503);
+      }
+    })
+    .get("/api/seasonality/year", async (c) => {
+      let query: SeasonalityYearQuery;
+      try {
+        query = parseYearQuery(new URL(c.req.url));
+      } catch {
+        return c.json({ error: "invalid query parameters" }, 400);
+      }
+
+      try {
+        const result = await cache.getYear(query.lat, query.lon, query.radiusKm);
+        return c.json(result);
+      } catch (error) {
+        console.error("GET /api/seasonality/year failed:", error);
+        return c.json({ error: "seasonality data is currently unavailable" }, 503);
+      }
+    });
 }

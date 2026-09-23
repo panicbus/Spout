@@ -38,6 +38,15 @@ describe("sightingsDb", () => {
     expect(results.find((s) => s.id === "b")?.photoUrl).toBeUndefined();
   });
 
+  it("round-trips happywhaleUrl when present, and back to undefined (not null) when absent", () => {
+    upsertSightings(db, [buildSighting({ id: "a", happywhaleUrl: "https://happywhale.com/encounter/623491" })]);
+    upsertSightings(db, [buildSighting({ id: "b", happywhaleUrl: undefined })]);
+
+    const results = querySightings(db, {});
+    expect(results.find((s) => s.id === "a")?.happywhaleUrl).toBe("https://happywhale.com/encounter/623491");
+    expect(results.find((s) => s.id === "b")?.happywhaleUrl).toBeUndefined();
+  });
+
   it("replaces a sighting with the same id instead of duplicating it — refresh must not accumulate stale copies", () => {
     upsertSightings(db, [buildSighting({ lat: 36.5 })]);
     upsertSightings(db, [buildSighting({ lat: 37.0 })]);
@@ -177,9 +186,13 @@ describe("openSightingsDb migration", () => {
     const db = openSightingsDb(path);
     const columns = db.prepare("PRAGMA table_info(sightings)").all() as { name: string }[];
     expect(columns.some((c) => c.name === "photo_url")).toBe(true);
+    // Same legacy table also predates happywhale_url — one real on-disk
+    // database can lag behind multiple migrations at once, and this
+    // proves both apply, not just whichever one a narrower fixture happened to cover.
+    expect(columns.some((c) => c.name === "happywhale_url")).toBe(true);
 
     const [preExisting] = querySightings(db, {});
-    expect(preExisting).toMatchObject({ id: "pre-existing", photoUrl: undefined });
+    expect(preExisting).toMatchObject({ id: "pre-existing", photoUrl: undefined, happywhaleUrl: undefined });
 
     upsertSightings(db, [buildSighting({ id: "new", photoUrl: "https://example.com/p.jpg" })]);
     expect(querySightings(db, {}).find((s) => s.id === "new")?.photoUrl).toBe("https://example.com/p.jpg");

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { SeasonalityQuerySchema, SeasonalityResponseSchema } from "../src/seasonality.js";
+import {
+  SeasonalityQuerySchema,
+  SeasonalityResponseSchema,
+  SeasonalityYearQuerySchema,
+  SeasonalityYearResponseSchema,
+} from "../src/seasonality.js";
 
 describe("SeasonalityQuerySchema", () => {
   it("parses lat/lon/date from query-string-shaped input", () => {
@@ -69,6 +74,62 @@ describe("SeasonalityResponseSchema", () => {
     expect(() =>
       SeasonalityResponseSchema.parse(
         validResponse({ species: [{ species: "humpback-whale", share: 0.86, sampleSize: 7081, estimatedDensity: -1 }] }),
+      ),
+    ).toThrow();
+  });
+});
+
+describe("SeasonalityYearQuerySchema", () => {
+  it("parses lat/lon from query-string-shaped input, with no date required", () => {
+    const query = SeasonalityYearQuerySchema.parse({ lat: "36.6", lon: "-121.9" });
+    expect(query).toMatchObject({ lat: 36.6, lon: -121.9, radiusKm: 50 });
+  });
+
+  it("rejects a lat outside +/-90", () => {
+    expect(() => SeasonalityYearQuerySchema.parse({ lat: "132", lon: "-121.9" })).toThrow();
+  });
+});
+
+describe("SeasonalityYearResponseSchema", () => {
+  function validYearResponse(overrides: Partial<Record<string, unknown>> = {}) {
+    return {
+      species: [
+        {
+          species: "humpback-whale",
+          months: Array.from({ length: 12 }, (_, i) => ({ month: i + 1, share: 0.1, sampleSize: 500 })),
+        },
+      ],
+      ...overrides,
+    };
+  }
+
+  it("accepts a well-formed year response with 12 months", () => {
+    const parsed = SeasonalityYearResponseSchema.parse(validYearResponse());
+    expect(parsed.species[0]?.months).toHaveLength(12);
+  });
+
+  it("omits share independently per month, below the sample-size threshold", () => {
+    const parsed = SeasonalityYearResponseSchema.parse(
+      validYearResponse({
+        species: [
+          {
+            species: "gray-whale",
+            months: [
+              { month: 1, share: 0.4, sampleSize: 500 },
+              { month: 6, share: undefined, sampleSize: 2 },
+            ],
+          },
+        ],
+      }),
+    );
+    expect(parsed.species[0]?.months[0]?.share).toBe(0.4);
+    expect(parsed.species[0]?.months[1]?.share).toBeUndefined();
+  });
+
+  it("rejects a month outside 1-12", () => {
+    expect(() =>
+      SeasonalityYearResponseSchema.parse(
+        validYearResponse({ species: [{ species: "orca", months: [{ month: 13, sampleSize: 10 }] }] }),
       ),
     ).toThrow();
   });

@@ -1,45 +1,16 @@
-import { SPECIES_LABELS, type SeasonalityResponse, type Species } from "@spout/contracts";
-import { forwardRef } from "react";
+import { SPECIES_LABELS, type SeasonalityResponse } from "@spout/contracts";
+import { forwardRef, useState } from "react";
 import { AnchoredCard } from "../../components/ui/AnchoredCard.js";
 import type { ProjectedPoint } from "../../components/map/useProjectedPoint.js";
 import { useSeasonality } from "../../lib/useSeasonality.js";
-import blueWhaleIcon from "../../assets/species/blue-whale.png";
-import grayWhaleIcon from "../../assets/species/gray-whale.png";
-import humpbackWhaleIcon from "../../assets/species/humpback-whale.png";
-import orcaIcon from "../../assets/species/orca.png";
+import { useSeasonalityYear } from "../../lib/useSeasonalityYear.js";
+import { MONTH_NAMES, SPECIES_ICONS, formatShare } from "./seasonalityDisplay.js";
+import { YearChart } from "./YearChart.js";
 import styles from "./SeasonalityCard.module.css";
-
-const SPECIES_ICONS: Record<Species, string> = {
-  "blue-whale": blueWhaleIcon,
-  "humpback-whale": humpbackWhaleIcon,
-  "gray-whale": grayWhaleIcon,
-  orca: orcaIcon,
-};
-
-const MONTH_NAMES = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
 
 /** Highest-share species first, so the most relevant answer to "what am I likely to see" reads first without the user having to scan. */
 function bySharesDescending(a: SeasonalityResponse["species"][number], b: SeasonalityResponse["species"][number]) {
   return (b.share ?? -1) - (a.share ?? -1);
-}
-
-function formatShare(share: number): string {
-  if (share === 0) return "not reported";
-  if (share < 0.01) return "<1%";
-  return `${Math.round(share * 100)}%`;
 }
 
 /** `estimatedDensity` is animals per 100 km² (Duke/NOAA's ECMM habitat models, Phase 4) — an independently modeled figure, deliberately never blended into `formatShare`'s reported-sightings percentage above. */
@@ -71,6 +42,16 @@ export const SeasonalityCard = forwardRef<HTMLDivElement, SeasonalityCardProps>(
   const tap = lngLat ? { lat: lngLat[1], lon: lngLat[0], date } : null;
   const result = useSeasonality(tap);
   const open = lngLat !== null;
+
+  // Keyed by the tapped location (not a plain boolean) so switching to a
+  // different spot naturally collapses back to the single-month view at
+  // render time — the same "derive from a stored key" shape `useSeasonality`
+  // itself uses for idle/loading, rather than a separate effect just to
+  // reset a boolean on tap change.
+  const [yearViewFor, setYearViewFor] = useState<string | null>(null);
+  const tapKey = tap ? `${tap.lat},${tap.lon}` : null;
+  const showYear = tapKey !== null && yearViewFor === tapKey;
+  const yearResult = useSeasonalityYear(showYear && tap ? { lat: tap.lat, lon: tap.lon } : null);
 
   return (
     <AnchoredCard ref={ref} open={open} anchor={anchor} onClose={onClose} title="Whale sighting seasonality">
@@ -113,6 +94,29 @@ export const SeasonalityCard = forwardRef<HTMLDivElement, SeasonalityCardProps>(
                       Modeled density (animals per 100 km²) is from Duke/NOAA&rsquo;s U.S. Atlantic/Gulf habitat
                       models, independent of reported sightings — see Data sources for the citation.
                     </p>
+                  )}
+                </>
+              )}
+
+              <button
+                type="button"
+                className={styles.yearToggle}
+                onClick={() => setYearViewFor(showYear ? null : tapKey)}
+                aria-expanded={showYear}
+              >
+                {showYear ? "Hide full year" : "Show full year"}
+              </button>
+
+              {showYear && (
+                <>
+                  {yearResult.state === "loading" && (
+                    <p className={styles.status}>Checking the full year…</p>
+                  )}
+                  {yearResult.state === "error" && (
+                    <p className={styles.status}>Couldn&rsquo;t load the year view for this spot right now.</p>
+                  )}
+                  {yearResult.state === "ok" && (
+                    <YearChart data={yearResult.data} currentMonth={result.data.month} />
                   )}
                 </>
               )}

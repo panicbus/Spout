@@ -58,6 +58,27 @@
   flex-wrap: wrap;
 }
 
+/* Deliberately distinct from .footer/.citation's muted, technical
+   treatment below — this is the emotional hook ("this isn't just any
+   whale"), not a data-provenance detail, so it gets its own block with
+   real color and weight instead of reading as one more citation line. */
+.happywhaleCallout {
+  display: block;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  background: #eaf4fb;
+  color: #2a6f97;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.35;
+  text-decoration: none;
+}
+
+.happywhaleCallout:hover,
+.happywhaleCallout:focus-visible {
+  text-decoration: underline;
+}
+
 .meta {
   margin: 0;
   display: flex;

@@ -1,4 +1,10 @@
-import type { SeasonalityFetcher, SeasonalityResult } from "../sources/gbifSeasonality.js";
+import {
+  fetchSeasonalityYear,
+  type SeasonalityFetcher,
+  type SeasonalityResult,
+  type SeasonalityYearFetcher,
+  type SeasonalityYearResult,
+} from "../sources/gbifSeasonality.js";
 import { fetchSeasonalityWithDensity } from "../sources/seasonalityWithDensity.js";
 import { TtlCache } from "./ttlCache.js";
 
@@ -10,6 +16,13 @@ function cacheKey(lat: number, lon: number, month: number): string {
   const roundedLat = Math.round(lat * 10) / 10;
   const roundedLon = Math.round(lon * 10) / 10;
   return `${roundedLat},${roundedLon},${month}`;
+}
+
+/** Same rounding as `cacheKey`, minus `month` — the year view fetches (and caches) the whole calendar in one entry, not 12 separate ones. */
+function yearCacheKey(lat: number, lon: number): string {
+  const roundedLat = Math.round(lat * 10) / 10;
+  const roundedLon = Math.round(lon * 10) / 10;
+  return `${roundedLat},${roundedLon}`;
 }
 
 /**
@@ -28,14 +41,19 @@ function cacheKey(lat: number, lon: number, month: number): string {
 export interface SeasonalityCacheOptions {
   /** Overridable for tests; defaults to the real fetchSeasonalityWithDensity (GBIF share + ECMM density enrichment). */
   fetcher?: SeasonalityFetcher;
+  /** Overridable for tests; defaults to the real fetchSeasonalityYear (GBIF share only — ECMM density-by-month is deliberately out of scope, see docs/adr). */
+  yearFetcher?: SeasonalityYearFetcher;
 }
 
 export class SeasonalityCache {
   private caches = new Map<string, TtlCache<SeasonalityResult>>();
+  private yearCaches = new Map<string, TtlCache<SeasonalityYearResult>>();
   private readonly fetcher: SeasonalityFetcher;
+  private readonly yearFetcher: SeasonalityYearFetcher;
 
-  constructor({ fetcher = fetchSeasonalityWithDensity }: SeasonalityCacheOptions = {}) {
+  constructor({ fetcher = fetchSeasonalityWithDensity, yearFetcher = fetchSeasonalityYear }: SeasonalityCacheOptions = {}) {
     this.fetcher = fetcher;
+    this.yearFetcher = yearFetcher;
   }
 
   get(lat: number, lon: number, month: number, radiusKm?: number): Promise<SeasonalityResult> {
@@ -47,6 +65,19 @@ export class SeasonalityCache {
         fetcher: () => this.fetcher(lat, lon, month, { radiusKm }),
       });
       this.caches.set(key, cache);
+    }
+    return cache.get();
+  }
+
+  getYear(lat: number, lon: number, radiusKm?: number): Promise<SeasonalityYearResult> {
+    const key = yearCacheKey(lat, lon);
+    let cache = this.yearCaches.get(key);
+    if (!cache) {
+      cache = new TtlCache<SeasonalityYearResult>({
+        ttlMs: SEASONALITY_TTL_MS,
+        fetcher: () => this.yearFetcher(lat, lon, { radiusKm }),
+      });
+      this.yearCaches.set(key, cache);
     }
     return cache.get();
   }

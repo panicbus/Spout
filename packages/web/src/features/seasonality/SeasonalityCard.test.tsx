@@ -5,7 +5,7 @@ import { SeasonalityCard } from "./SeasonalityCard.js";
 
 vi.mock("../../lib/apiClient.js", async () => {
   const actual = await vi.importActual<typeof apiClient>("../../lib/apiClient.js");
-  return { ...actual, fetchSeasonality: vi.fn() };
+  return { ...actual, fetchSeasonality: vi.fn(), fetchSeasonalityYear: vi.fn() };
 });
 
 const ANCHOR = { x: 100, y: 100 };
@@ -14,6 +14,7 @@ const LNG_LAT: [number, number] = [-121.9, 36.6];
 describe("SeasonalityCard", () => {
   beforeEach(() => {
     vi.mocked(apiClient.fetchSeasonality).mockReset();
+    vi.mocked(apiClient.fetchSeasonalityYear).mockReset();
   });
 
   it("renders nothing when lngLat is null", () => {
@@ -85,6 +86,55 @@ describe("SeasonalityCard", () => {
     render(<SeasonalityCard lngLat={LNG_LAT} date="2026-09-12" anchor={ANCHOR} onClose={() => {}} />);
 
     expect(await screen.findByText(/couldn.t load/i)).toBeInTheDocument();
+  });
+
+  it("does not fetch the year view until the toggle is clicked, then shows it", async () => {
+    vi.mocked(apiClient.fetchSeasonality).mockResolvedValue({
+      month: 9,
+      species: [{ species: "humpback-whale", share: 0.86, sampleSize: 100 }],
+    });
+    vi.mocked(apiClient.fetchSeasonalityYear).mockResolvedValue({
+      species: [
+        {
+          species: "humpback-whale",
+          months: Array.from({ length: 12 }, (_, i) => ({ month: i + 1, share: 0.1, sampleSize: 100 })),
+        },
+      ],
+    });
+
+    render(<SeasonalityCard lngLat={LNG_LAT} date="2026-09-12" anchor={ANCHOR} onClose={() => {}} />);
+    await screen.findByText("September");
+    expect(apiClient.fetchSeasonalityYear).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: /show full year/i }));
+
+    expect(apiClient.fetchSeasonalityYear).toHaveBeenCalledWith(36.6, -121.9);
+    await screen.findByRole("button", { name: /hide full year/i });
+  });
+
+  it("collapses the year view when the toggle is clicked again", async () => {
+    vi.mocked(apiClient.fetchSeasonality).mockResolvedValue({
+      month: 9,
+      species: [{ species: "humpback-whale", share: 0.86, sampleSize: 100 }],
+    });
+    vi.mocked(apiClient.fetchSeasonalityYear).mockResolvedValue({
+      species: [
+        {
+          species: "humpback-whale",
+          months: Array.from({ length: 12 }, (_, i) => ({ month: i + 1, share: 0.1, sampleSize: 100 })),
+        },
+      ],
+    });
+
+    render(<SeasonalityCard lngLat={LNG_LAT} date="2026-09-12" anchor={ANCHOR} onClose={() => {}} />);
+    await screen.findByText("September");
+    fireEvent.click(screen.getByRole("button", { name: /show full year/i }));
+    await screen.findByRole("button", { name: /hide full year/i });
+
+    fireEvent.click(screen.getByRole("button", { name: /hide full year/i }));
+
+    expect(screen.queryByRole("button", { name: /hide full year/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /show full year/i })).toBeInTheDocument();
   });
 
   it("calls onClose when dismissed", () => {

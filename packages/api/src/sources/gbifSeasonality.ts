@@ -81,6 +81,16 @@ export interface SeasonalityResult {
   species: SpeciesSeasonalityResult[];
 }
 
+/** One species' full 12-month curve — `fetchSeasonalityYear`'s per-species result. Each month applies the same `MIN_SAMPLE_SIZE` honesty gate independently, exactly as `fetchSeasonality` does for its one requested month. */
+export interface SpeciesSeasonalityYearResult {
+  species: Species;
+  months: { month: number; share: number | undefined; sampleSize: number }[];
+}
+
+export interface SeasonalityYearResult {
+  species: SpeciesSeasonalityYearResult[];
+}
+
 export interface FetchSeasonalityOptions {
   radiusKm?: number;
   fetchImpl?: typeof fetch;
@@ -94,55 +104,112 @@ export type SeasonalityFetcher = (
   options?: FetchSeasonalityOptions,
 ) => Promise<SeasonalityResult>;
 
+/** `fetchSeasonalityYear`'s own shape, mirroring `SeasonalityFetcher` — `SeasonalityCache.getYear` and `app.ts`'s DI option are both typed against this rather than `typeof fetchSeasonalityYear` directly. */
+export type SeasonalityYearFetcher = (
+  lat: number,
+  lon: number,
+  options?: FetchSeasonalityOptions,
+) => Promise<SeasonalityYearResult>;
+
+function baseParams(bbox: ReturnType<typeof bboxAroundPoint>): URLSearchParams {
+  const untilYear = new Date().getFullYear();
+  const sinceYear = untilYear - YEARS_OF_HISTORY;
+  return new URLSearchParams({
+    decimalLatitude: `${bbox.minLat.toFixed(4)},${bbox.maxLat.toFixed(4)}`,
+    decimalLongitude: `${bbox.minLon.toFixed(4)},${bbox.maxLon.toFixed(4)}`,
+    hasCoordinate: "true",
+    year: `${sinceYear},${untilYear}`,
+    facet: "month",
+    facetLimit: "12",
+    limit: "0",
+  });
+}
+
+/**
+ * The one shared GBIF round-trip both `fetchSeasonality` and
+ * `fetchSeasonalityYear` build on: GBIF's own facet API already returns
+ * a full 12-month breakdown per query (`monthCounts`, above) — this
+ * fetches that once per species-plus-denominator (5 requests total,
+ * never more, regardless of whether the caller wants one month or all
+ * twelve) and hands back the raw counts. Extracting a single month
+ * (`fetchSeasonality`) or every month (`fetchSeasonalityYear`) is pure
+ * post-processing over the same data, not a second fetch.
+ */
+async function fetchAllMonthCounts(
+  lat: number,
+  lon: number,
+  { radiusKm = 50, fetchImpl = fetch }: FetchSeasonalityOptions = {},
+): Promise<{ allCetaceaByMonth: Record<number, number>; bySpecies: Record<Species, Record<number, number>> }> {
+  const bbox = bboxAroundPoint(lat, lon, radiusKm);
+
+  const cetaceaParams = baseParams(bbox);
+  cetaceaParams.set("taxonKey", String(CETACEA_TAXON_KEY));
+  const allCetaceaByMonth = await monthCounts(cetaceaParams, fetchImpl);
+
+  const entries = await Promise.all(
+    SPECIES.map(async (sp): Promise<[Species, Record<number, number>]> => {
+      const params = baseParams(bbox);
+      params.set("scientificName", SPECIES_SCIENTIFIC_NAMES[sp]);
+      return [sp, await monthCounts(params, fetchImpl)];
+    }),
+  );
+
+  return { allCetaceaByMonth, bySpecies: Object.fromEntries(entries) as Record<Species, Record<number, number>> };
+}
+
 /**
  * Computes, per tracked species, the effort-normalized share of
  * all-cetacean reports near `(lat, lon)` that were that species, for the
  * given calendar `month` — the "of everyone who reported a whale here in
  * this window, what fraction reported this species" figure ADR 0006
  * settled on, deliberately not an absolute sighting probability.
- *
- * Two GBIF facet queries per species pair (this species + the Cetacea
- * denominator) run in parallel, all sharing the same bbox/date-range
- * base params so numerator and denominator are always drawn from
- * exactly the same effort pool.
  */
 export async function fetchSeasonality(
   lat: number,
   lon: number,
   month: number,
-  { radiusKm = 50, fetchImpl = fetch }: FetchSeasonalityOptions = {},
+  options: FetchSeasonalityOptions = {},
 ): Promise<SeasonalityResult> {
-  const bbox = bboxAroundPoint(lat, lon, radiusKm);
-  const untilYear = new Date().getFullYear();
-  const sinceYear = untilYear - YEARS_OF_HISTORY;
-
-  function baseParams(): URLSearchParams {
-    return new URLSearchParams({
-      decimalLatitude: `${bbox.minLat.toFixed(4)},${bbox.maxLat.toFixed(4)}`,
-      decimalLongitude: `${bbox.minLon.toFixed(4)},${bbox.maxLon.toFixed(4)}`,
-      hasCoordinate: "true",
-      year: `${sinceYear},${untilYear}`,
-      facet: "month",
-      facetLimit: "12",
-      limit: "0",
-    });
-  }
-
-  const cetaceaParams = baseParams();
-  cetaceaParams.set("taxonKey", String(CETACEA_TAXON_KEY));
-  const allCetaceaByMonth = await monthCounts(cetaceaParams, fetchImpl);
+  const { allCetaceaByMonth, bySpecies } = await fetchAllMonthCounts(lat, lon, options);
   const sampleSize = allCetaceaByMonth[month] ?? 0;
 
-  const species = await Promise.all(
-    SPECIES.map(async (sp): Promise<SpeciesSeasonalityResult> => {
-      const params = baseParams();
-      params.set("scientificName", SPECIES_SCIENTIFIC_NAMES[sp]);
-      const byMonth = await monthCounts(params, fetchImpl);
-      const numerator = byMonth[month] ?? 0;
-      const share = sampleSize >= MIN_SAMPLE_SIZE ? numerator / sampleSize : undefined;
-      return { species: sp, share, sampleSize };
-    }),
-  );
+  const species = SPECIES.map((sp): SpeciesSeasonalityResult => {
+    const numerator = bySpecies[sp][month] ?? 0;
+    const share = sampleSize >= MIN_SAMPLE_SIZE ? numerator / sampleSize : undefined;
+    return { species: sp, share, sampleSize };
+  });
 
   return { month, species };
+}
+
+/**
+ * The same effort-normalized share as `fetchSeasonality`, for all 12
+ * months in one call — "what does this whole spot's calendar look
+ * like," not just today. Costs the *same* 5 GBIF requests as a
+ * single-month `fetchSeasonality` call (see `fetchAllMonthCounts`),
+ * since GBIF's facet API already returns the full year per request;
+ * this only differs in which months of that already-fetched data it
+ * keeps. Each month applies `MIN_SAMPLE_SIZE` independently — a
+ * well-sampled July next to an unsampled February is expected, not a
+ * bug, at a seasonal location.
+ */
+export async function fetchSeasonalityYear(
+  lat: number,
+  lon: number,
+  options: FetchSeasonalityOptions = {},
+): Promise<SeasonalityYearResult> {
+  const { allCetaceaByMonth, bySpecies } = await fetchAllMonthCounts(lat, lon, options);
+
+  const species = SPECIES.map((sp): SpeciesSeasonalityYearResult => {
+    const months = Array.from({ length: 12 }, (_, i) => {
+      const month = i + 1;
+      const sampleSize = allCetaceaByMonth[month] ?? 0;
+      const numerator = bySpecies[sp][month] ?? 0;
+      const share = sampleSize >= MIN_SAMPLE_SIZE ? numerator / sampleSize : undefined;
+      return { month, share, sampleSize };
+    });
+    return { species: sp, months };
+  });
+
+  return { species };
 }
