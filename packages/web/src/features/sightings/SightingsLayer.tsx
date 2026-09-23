@@ -19,16 +19,15 @@ export const SIGHTINGS_CLUSTER_COUNT_LAYER_ID = "sightings-cluster-count";
 export const SIGHTINGS_POINTS_LAYER_ID = "sightings-points";
 
 /**
- * The one fill layer in OpenFreeMap's "liberty" base style (`mapConfig.ts`'s
- * `MAP_STYLE_URL`) that represents real water bodies (ocean/lake/river,
- * OpenMapTiles merges these under one schema — verified live against the
- * style's own JSON) — not a layer this app adds itself. No `minzoom`/
- * `maxzoom` set, so it's always rendered/queryable. Deliberately NOT
- * implemented as "no land layer hit" instead: this style has no single
- * comprehensive land polygon (landcover/landuse only cover specific
- * classified land-use types; most bare/unclassified land is just the
- * style's plain background color with no queryable feature at all), so a
- * land-absence check would misclassify huge swaths of real land as water.
+ * The invisible (`fill-opacity: 0`) water hit-test layer the app's own
+ * composed base style declares (`mapConfig.ts`'s `MAP_STYLE`) — the
+ * visible basemap is Esri's raster ocean imagery, which has no vector
+ * geometry of its own to query, so this layer exists purely so
+ * `queryRenderedFeatures` can still answer "is this tap on water,"
+ * sourced from OpenFreeMap's `water` vector layer (OpenMapTiles merges
+ * ocean/lake/river under one schema) but rendered fully transparent. See
+ * `mapConfig.ts`'s own doc comment for why this needs its own layer
+ * rather than reusing OpenFreeMap's full "liberty" style.
  */
 export const BASEMAP_WATER_LAYER_ID = "water";
 

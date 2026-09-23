@@ -71,7 +71,7 @@ describe("DataCreditsPanel", () => {
     );
   });
 
-  it("discloses the model's grid resolution, credits GBIF/iNaturalist for sightings, credits Duke's ECMM habitat models, and credits the map tile provider", () => {
+  it("discloses the model's grid resolution, credits GBIF/iNaturalist for sightings, credits Duke's ECMM habitat models, and credits the map tile providers", () => {
     vi.mocked(apiClient.fetchProbabilityGrid).mockReturnValue(new Promise(() => {}));
     renderPanel();
     fireEvent.click(screen.getByRole("button", { name: /data sources/i }));
@@ -80,6 +80,8 @@ describe("DataCreditsPanel", () => {
     expect(screen.getByText(/iNaturalist/)).toBeInTheDocument();
     expect(screen.getByText(/Duke University/)).toBeInTheDocument();
     expect(screen.getByText(/CC BY 4.0/)).toBeInTheDocument();
+    expect(screen.getByText(/Esri/)).toBeInTheDocument();
+    expect(screen.getByText(/GEBCO/)).toBeInTheDocument();
     expect(screen.getByText(/OpenFreeMap/)).toBeInTheDocument();
   });
 

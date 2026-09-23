@@ -81,7 +81,10 @@ export function DataCreditsPanel() {
 
           <section>
             <h3>Map tiles</h3>
-            <p>OpenFreeMap, OpenMapTiles, and OpenStreetMap contributors.</p>
+            <p>Esri, Garmin, GEBCO, NOAA NGDC, and other contributors (Esri World Ocean Base).</p>
+            <p className={styles.note}>
+              Water boundaries also draw on OpenStreetMap contributors via OpenFreeMap/OpenMapTiles.
+            </p>
           </section>
         </div>
       </Sheet>

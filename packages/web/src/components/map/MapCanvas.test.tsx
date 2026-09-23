@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
-import { MAP_STYLE_URL } from "../../lib/mapConfig.js";
+import { MAP_STYLE } from "../../lib/mapConfig.js";
 import { mapInstances, resetMaplibreMock } from "../../test/maplibre-mock.js";
 import { MapCanvas } from "./MapCanvas.js";
 import { useMap } from "./MapContext.js";
@@ -18,7 +18,7 @@ describe("MapCanvas", () => {
 
     expect(screen.getByTestId("map-canvas")).toBeInTheDocument();
     expect(mapInstances).toHaveLength(1);
-    expect(mapInstances[0]?.options.style).toBe(MAP_STYLE_URL);
+    expect(mapInstances[0]?.options.style).toBe(MAP_STYLE);
   });
 
   it("removes the map on unmount so navigating away doesn't leak a WebGL context", () => {
