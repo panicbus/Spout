@@ -9,6 +9,7 @@ import {
   BASEMAP_WATER_LAYER_ID,
   SIGHTINGS_CLUSTERS_LAYER_ID,
   SIGHTINGS_CLUSTER_COUNT_LAYER_ID,
+  SIGHTINGS_MARKER_IMAGE_ID,
   SIGHTINGS_POINTS_LAYER_ID,
   SIGHTINGS_SOURCE_ID,
   SightingsLayer,
@@ -77,13 +78,23 @@ describe("SightingsLayer", () => {
 
     map.trigger("load");
 
-    expect(map.addSource).toHaveBeenCalledWith(
-      SIGHTINGS_SOURCE_ID,
-      expect.objectContaining({
-        type: "geojson",
-        cluster: true,
-        data: expect.objectContaining({ type: "FeatureCollection" }),
-      }),
+    // The marker icon registers via a real async `loadImage`/`addImage`
+    // round-trip (see SightingsLayer.tsx's icon-loading effect) before
+    // the source/layers themselves go up — a plain synchronous assertion
+    // right after `trigger("load")` would run before that microtask
+    // resolves.
+    await waitFor(() =>
+      expect(map.addSource).toHaveBeenCalledWith(
+        SIGHTINGS_SOURCE_ID,
+        expect.objectContaining({
+          type: "geojson",
+          cluster: true,
+          // A grouping only becomes a numbered cluster bubble at 25+ real
+          // sightings; anything smaller renders as individual markers.
+          clusterMinPoints: 25,
+          data: expect.objectContaining({ type: "FeatureCollection" }),
+        }),
+      ),
     );
     expect(map.addLayer).toHaveBeenCalledWith(
       expect.objectContaining({ id: SIGHTINGS_CLUSTERS_LAYER_ID, source: SIGHTINGS_SOURCE_ID }),
@@ -94,6 +105,39 @@ describe("SightingsLayer", () => {
     expect(map.addLayer).toHaveBeenCalledWith(
       expect.objectContaining({ id: SIGHTINGS_POINTS_LAYER_ID, source: SIGHTINGS_SOURCE_ID }),
     );
+  });
+
+  it("registers the marker icon image once the map loads, before the points layer can reference it", async () => {
+    vi.mocked(apiClient.fetchSightings).mockResolvedValue([buildSighting()]);
+
+    render(
+      <MapCanvas>
+        <SightingsLayer timeWindow="30d" date="2026-09-12" />
+      </MapCanvas>,
+    );
+    const map = mapInstances[0]!;
+    await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
+    map.trigger("load");
+
+    await waitFor(() => expect(map.addImage).toHaveBeenCalledWith(SIGHTINGS_MARKER_IMAGE_ID, expect.anything()));
+    expect(map.loadImage).toHaveBeenCalled();
+  });
+
+  it("does not re-register the icon if it's already present on the map", async () => {
+    vi.mocked(apiClient.fetchSightings).mockResolvedValue([buildSighting()]);
+
+    render(
+      <MapCanvas>
+        <SightingsLayer timeWindow="30d" date="2026-09-12" />
+      </MapCanvas>,
+    );
+    const map = mapInstances[0]!;
+    map.hasImage.mockReturnValue(true);
+    await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
+    map.trigger("load");
+
+    await waitFor(() => expect(map.loadImage).toHaveBeenCalled());
+    expect(map.addImage).not.toHaveBeenCalled();
   });
 
   it("fetches sightings scoped to the `window` prop, so FilterBar's selection actually changes what's shown", async () => {
@@ -108,7 +152,7 @@ describe("SightingsLayer", () => {
     await waitFor(() => expect(apiClient.fetchSightings).toHaveBeenCalledWith(expect.objectContaining({ window: "90d" })));
   });
 
-  it("the points layer's paint expression encodes every ADR 0002/0003 visual requirement: tier color, obscured/citizen radius, and verification/age opacity", async () => {
+  it("the points layer uses the brand marker icon, anchored at its own bottom tip, sized up for obscured coordinates, with verification/age opacity preserved (ADR 0002/0003)", async () => {
     vi.mocked(apiClient.fetchSightings).mockResolvedValue([buildSighting()]);
 
     render(
@@ -120,36 +164,41 @@ describe("SightingsLayer", () => {
     await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
     map.trigger("load");
 
-    const pointsLayerCall = map.addLayer.mock.calls.find(
-      (call: unknown[]) => (call[0] as { id: string }).id === SIGHTINGS_POINTS_LAYER_ID,
-    );
-    const paint = (
-      pointsLayerCall?.[0] as {
-        paint: { "circle-color": unknown[]; "circle-radius": unknown[]; "circle-opacity": unknown[][] };
-      }
-    ).paint;
+    let pointsLayerCall: unknown[] | undefined;
+    await waitFor(() => {
+      pointsLayerCall = map.addLayer.mock.calls.find(
+        (call: unknown[]) => (call[0] as { id: string }).id === SIGHTINGS_POINTS_LAYER_ID,
+      );
+      expect(pointsLayerCall).toBeDefined();
+    });
+    const layer = pointsLayerCall![0] as {
+      layout: { "icon-image": string; "icon-anchor": string; "icon-size": unknown[] };
+      paint: { "icon-opacity": unknown[][] };
+    };
 
-    // Tier color (spec.md).
-    expect(paint["circle-color"]).toEqual(expect.arrayContaining(["match", ["get", "tier"], "research"]));
+    // One marker for every tier — no more per-tier color (ADR 0002's
+    // trust-tier requirement now lives entirely in PinDetailCard, not on
+    // the map itself; see the layer's own doc comment for why).
+    expect(layer.layout["icon-image"]).toBe(SIGHTINGS_MARKER_IMAGE_ID);
+    // The marker art has a real point at its own bottom tip, like a
+    // physical map pin — anchoring there (not the image center) is what
+    // makes that tip land exactly on the sighting's coordinate.
+    expect(layer.layout["icon-anchor"]).toBe("bottom");
+    // Obscured coordinates still render larger, signaling an approximate
+    // area rather than a precise pin (ADR 0002) — just via icon-size now,
+    // since icons have no stroke/halo paint property to soften instead.
+    expect(layer.layout["icon-size"]).toEqual(["case", ["get", "coordinatesObscured"], 0.26, 0.2]);
 
-    // Obscured coordinates render as a larger halo, and citizen-tier pins
-    // are sized up from the default — both spec.md/ADR 0002 requirements
-    // live in the same circle-radius expression.
-    expect(paint["circle-radius"]).toEqual(expect.arrayContaining(["case", ["get", "coordinatesObscured"]]));
-    expect(paint["circle-radius"]).toEqual(
-      expect.arrayContaining([expect.arrayContaining(["==", ["get", "tier"], "citizen"])]),
-    );
-
-    // circle-opacity branches on verification (unverified must never
+    // icon-opacity branches on verification (unverified must never
     // render identically to confirmed data), then applies an age fade
     // within each branch (ADR 0003) — both the unverified branch
     // (index 2) and the verified branch (index 3) key off the same
     // ageBucket match expression; checking the unverified branch (one
     // level shallower) covers both.
-    expect(paint["circle-opacity"]).toEqual(
+    expect(layer.paint["icon-opacity"]).toEqual(
       expect.arrayContaining(["case", ["==", ["get", "verification"], "unverified"]]),
     );
-    expect(paint["circle-opacity"][2]).toEqual(
+    expect(layer.paint["icon-opacity"][2]).toEqual(
       expect.arrayContaining([expect.arrayContaining(["match", ["get", "ageBucket"]])]),
     );
   });
@@ -179,6 +228,7 @@ describe("SightingsLayer", () => {
     const map = mapInstances[0]!;
     await waitFor(() => expect(map.once).toHaveBeenCalledWith("load", expect.any(Function)));
     map.trigger("load");
+    await waitFor(() => expect(map.addLayer).toHaveBeenCalled());
 
     const clustersCall = map.addLayer.mock.calls.find(
       (call: unknown[]) => (call[0] as { id: string }).id === SIGHTINGS_CLUSTERS_LAYER_ID,
@@ -206,6 +256,13 @@ describe("SightingsLayer", () => {
     map.getLayer.mockReturnValue({ id: "some-layer" });
     map.getSource.mockReturnValue({ setData: vi.fn() });
     map.trigger("load");
+    // Waits for the icon-loading microtask to resolve before unmounting —
+    // not `addSource` specifically, since this test primes `getSource` to
+    // already look truthy, which makes the apply callback take the
+    // existing-source `setData` branch instead. Either branch means the
+    // gated effect actually ran, which is all this test needs before it
+    // can meaningfully assert on unmount's cleanup.
+    await waitFor(() => expect(map.addImage).toHaveBeenCalled());
 
     unmount();
 
@@ -229,8 +286,8 @@ describe("SightingsLayer", () => {
     map.getSource.mockReturnValue({ setData });
     map.trigger("load");
 
+    await waitFor(() => expect(setData).toHaveBeenCalledWith(expect.objectContaining({ type: "FeatureCollection" })));
     expect(map.addSource).not.toHaveBeenCalled();
-    expect(setData).toHaveBeenCalledWith(expect.objectContaining({ type: "FeatureCollection" }));
   });
 
   it("does not remove the layers/source while a FilterBar window change is still in flight — the pins must stay visible, not blank out, during the refetch", async () => {

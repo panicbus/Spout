@@ -44,6 +44,11 @@ export interface MapInstanceMock {
   fitBounds: ReturnType<typeof vi.fn>;
   /** Defaults to a real `LngLatBounds`-shaped object covering the whole world — override per test when a test cares about the actual viewport bbox a component reads. */
   getBounds: ReturnType<typeof vi.fn>;
+  /** Defaults to resolving immediately with a fake `{data: {}}` — matches real `map.loadImage`'s Promise-returning shape (`SightingsLayer.tsx`'s icon-registration effect awaits this before `addImage`/`hasImage`). Override with `mockReturnValue(new Promise(() => {}))` for a test that needs the load to stay pending. */
+  loadImage: ReturnType<typeof vi.fn>;
+  addImage: ReturnType<typeof vi.fn>;
+  /** Defaults to `false` (not yet registered) — override per test to simulate an icon a previous mount already added. */
+  hasImage: ReturnType<typeof vi.fn>;
   on: ReturnType<typeof vi.fn<EventBinder>>;
   once: ReturnType<typeof vi.fn<EventBinder>>;
   off: ReturnType<typeof vi.fn<EventBinder>>;
@@ -82,6 +87,9 @@ class MapMock implements MapInstanceMock {
     getEast: () => 180,
     getNorth: () => 90,
   }));
+  loadImage: ReturnType<typeof vi.fn> = vi.fn(() => Promise.resolve({ data: {} }));
+  addImage: ReturnType<typeof vi.fn> = vi.fn();
+  hasImage: ReturnType<typeof vi.fn> = vi.fn(() => false);
 
   private listeners = new Map<string, Set<Listener>>();
   // Real maplibre-gl's Evented class keeps this same original->wrapped

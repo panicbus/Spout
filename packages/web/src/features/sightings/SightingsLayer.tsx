@@ -10,6 +10,8 @@ import { SeasonalityCard } from "../seasonality/SeasonalityCard.js";
 import { sightingsToGeoJson } from "../../lib/sightingsGeoJson.js";
 import { useNow } from "../../lib/useNow.js";
 import { useSightings } from "../../lib/useSightings.js";
+import type { FetchState } from "../../lib/useFetch.js";
+import spoutMarkerUrl from "../../assets/brand/spout-marker.png";
 import { PinDetailCard } from "./PinDetailCard.js";
 import { AGE_OPACITY, UNVERIFIED_OPACITY, VERIFIED_MIN_OPACITY, VERIFIED_OPACITY } from "./pinOpacity.js";
 
@@ -31,8 +33,8 @@ export const SIGHTINGS_POINTS_LAYER_ID = "sightings-points";
  */
 export const BASEMAP_WATER_LAYER_ID = "water";
 
-/** Placeholder tier colors — a real palette pass belongs to R4's UX round, not here. */
-const TIER_COLORS = { research: "#2a6f97", citizen: "#e09f3e", acoustic: "#6c757d" } as const;
+/** The registered `map.addImage` id for the brand marker (`spout-marker.png`) — see the icon-loading effect below for why this has to be a real async load, not a synchronous `addLayer` call like every other layer here. */
+export const SIGHTINGS_MARKER_IMAGE_ID = "spout-marker";
 
 const clustersLayer: AddLayerObject = {
   id: SIGHTINGS_CLUSTERS_LAYER_ID,
@@ -69,47 +71,43 @@ const clusterCountLayer: AddLayerObject = {
 };
 
 /**
- * Unclustered individual sightings, colored by trust tier — this is the
- * one place tier becomes visible on the map itself, ahead of R4's richer
- * detail card. Also the one place `verification`/`coordinatesObscured`
- * become visible: spec.md ("clearly marked as unverified photo reports")
- * and ADR 0002 ("obscured/geoprivacy coordinates are never rendered as
- * precise pins") both require these to read as visually distinct, not
- * just be present in the data — `sightingsGeoJson.ts` threads both
- * properties through specifically so this layer can key off them here.
+ * Unclustered individual sightings, rendered with the one brand marker
+ * (`spout-marker.png`) for every tier — a deliberate simplification from
+ * the earlier per-tier color coding (research/citizen/acoustic each had
+ * their own circle color): the user asked for one consistent icon across
+ * "all Spout iconography," accepting that trade explicitly after being
+ * told it would replace the old tier-color system. Tier is still fully
+ * visible in `PinDetailCard` once tapped; it just no longer has its own
+ * color on the map itself.
+ *
+ * `verification`/`coordinatesObscured`/age fade are preserved — spec.md
+ * ("clearly marked as unverified photo reports") and ADR 0002
+ * ("obscured/geoprivacy coordinates are never rendered as precise pins")
+ * both require these to read as visually distinct, and neither is a
+ * tier signal, so dropping tier-color didn't have to cost these too.
+ * `coordinatesObscured` no longer gets circle-stroke-based softening
+ * (icons have no stroke paint property) — just a straightforward size
+ * bump instead, a real reduction in that particular affordance, accepted
+ * as the cost of switching to a raster icon.
  */
 const pointsLayer: AddLayerObject = {
   id: SIGHTINGS_POINTS_LAYER_ID,
-  type: "circle",
+  type: "symbol",
   source: SIGHTINGS_SOURCE_ID,
   filter: ["!", ["has", "point_count"]],
+  layout: {
+    "icon-image": SIGHTINGS_MARKER_IMAGE_ID,
+    // The registered source image is 200x189px — sized so these scale
+    // factors land on a legible ~38-50px on-screen marker without the
+    // underlying raster looking soft even at 2x/retina.
+    "icon-size": ["case", ["get", "coordinatesObscured"], 0.26, 0.2],
+    // The marker's own artwork has a literal point at its bottom tip
+    // (a real map-pin shape) — anchoring there, not at the image center,
+    // is what makes that tip land exactly on the sighting's coordinate.
+    "icon-anchor": "bottom",
+    "icon-allow-overlap": true,
+  },
   paint: {
-    "circle-color": [
-      "match",
-      ["get", "tier"],
-      "research",
-      TIER_COLORS.research,
-      "citizen",
-      TIER_COLORS.citizen,
-      "acoustic",
-      TIER_COLORS.acoustic,
-      /* default */ "#999999",
-    ],
-    // Obscured coordinates are geoprivacy-randomized, not measured —
-    // rendered larger and softer so it reads as an approximate area, not
-    // a precise pin. Citizen reports (orange) are sized up a step from
-    // research/acoustic (blue/gray) on top of that — they're the
-    // majority of what a casual user actually taps, and at the default
-    // 6px radius they read as barely-visible flecks against the
-    // probability raster's color range.
-    "circle-radius": [
-      "case",
-      ["get", "coordinatesObscured"],
-      13,
-      ["==", ["get", "tier"], "citizen"],
-      9,
-      6,
-    ],
     // Unverified citizen reports (iNaturalist "needs_id") render faded,
     // distinct from confirmed research-grade/verified data, further faded
     // by age (the "match" on ageBucket below, from AGE_OPACITY — the one
@@ -120,7 +118,7 @@ const pointsLayer: AddLayerObject = {
     // floored at VERIFIED_MIN_OPACITY regardless of age — see that
     // constant's doc comment for why age fade must NOT be allowed to push
     // a verified pin down near/below an unverified pin's ceiling.
-    "circle-opacity": [
+    "icon-opacity": [
       "case",
       ["==", ["get", "verification"], "unverified"],
       [
@@ -158,9 +156,6 @@ const pointsLayer: AddLayerObject = {
         ],
       ],
     ],
-    "circle-stroke-width": ["case", ["get", "coordinatesObscured"], 2, 1],
-    "circle-stroke-color": "#ffffff",
-    "circle-stroke-opacity": ["case", ["get", "coordinatesObscured"], 0.5, 1],
   },
 };
 
@@ -217,10 +212,63 @@ export function SightingsLayer({ timeWindow, date }: SightingsLayerProps) {
   const [selection, setSelection] = useState<Selection>(null);
   const [lastData, setLastData] = useState<Sighting[]>([]);
 
-  useGeoJsonMapLayer(map, result, sightingsToGeoJson, {
+  // `map.addImage` needs real decoded pixel data, which (unlike every
+  // other `addLayer` call in this app) means a genuine async load — a
+  // freshly-constructed `Map` has no images registered yet, and
+  // `pointsLayer` above references `SIGHTINGS_MARKER_IMAGE_ID` by name,
+  // so adding it before the icon exists would render nothing for every
+  // pin. Gated on `map.loaded()`/`'load'` the same way every other
+  // style-mutating call in this codebase is, to avoid mutating a style
+  // that isn't ready yet.
+  const [iconLoaded, setIconLoaded] = useState(false);
+  useEffect(() => {
+    if (!map) return;
+    let cancelled = false;
+
+    const registerIcon = () => {
+      map
+        .loadImage(spoutMarkerUrl)
+        .then((image) => {
+          if (cancelled) return;
+          if (!map.hasImage(SIGHTINGS_MARKER_IMAGE_ID)) {
+            map.addImage(SIGHTINGS_MARKER_IMAGE_ID, image.data);
+          }
+          setIconLoaded(true);
+        })
+        .catch((error: unknown) => {
+          console.error("Failed to load the sightings marker icon:", error);
+        });
+    };
+
+    if (map.loaded()) {
+      registerIcon();
+    } else {
+      map.once("load", registerIcon);
+    }
+
+    return () => {
+      cancelled = true;
+      map.off("load", registerIcon);
+    };
+  }, [map]);
+
+  // Withholds the real fetch result from `useGeoJsonMapLayer` until the
+  // marker icon is registered — its own lifecycle only re-applies when
+  // this input's identity/state actually changes, so an "ok" result
+  // handed to it before the icon exists would add `pointsLayer`
+  // referencing a not-yet-registered image and never revisit it once the
+  // icon does load a moment later.
+  const layerInput: FetchState<Sighting[]> = iconLoaded ? result : { state: "loading" };
+
+  useGeoJsonMapLayer(map, layerInput, sightingsToGeoJson, {
     sourceId: SIGHTINGS_SOURCE_ID,
     layers: [clustersLayer, clusterCountLayer, pointsLayer],
-    sourceOptions: { cluster: true, clusterMaxZoom: 14, clusterRadius: 50 },
+    // clusterMinPoints: 25 — a grouping only collapses into the numbered
+    // cluster bubble once it reaches 25 real sightings; anything smaller
+    // renders as individual brand markers instead (a user-requested
+    // change: fewer, more legible cluster bubbles, more of the actual
+    // marker visible at a glance).
+    sourceOptions: { cluster: true, clusterMaxZoom: 14, clusterRadius: 50, clusterMinPoints: 25 },
   });
 
   // `useMapLayerLifecycle` deliberately leaves the previously-rendered
@@ -244,7 +292,7 @@ export function SightingsLayer({ timeWindow, date }: SightingsLayerProps) {
   // properties once, at conversion time — `useGeoJsonMapLayer`'s own
   // lifecycle (above) only re-runs that conversion when `lastData` itself
   // changes (a refetch), so without this, a pin's age-based fade
-  // (`pointsLayer`'s `circle-opacity`) would silently freeze at whatever
+  // (`pointsLayer`'s `icon-opacity`) would silently freeze at whatever
   // it was the moment its data last arrived, even as real time passes in
   // a long-open tab. Re-pushes freshly-recomputed GeoJSON straight to the
   // already-added source on every `useNow` tick — deliberately bypassing

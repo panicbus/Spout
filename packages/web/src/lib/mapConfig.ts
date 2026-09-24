@@ -80,6 +80,23 @@ export const MAP_STYLE: StyleSpecification = {
 };
 
 /**
+ * Esri's World Ocean Base tiles bake roads and administrative boundary
+ * lines directly into the raster image itself once zoomed in this far —
+ * there's no vector layer to toggle them off, since it's a flat image.
+ * Verified live at multiple real coastal/inland tiles: z7 is clean
+ * everywhere sampled (including land-heavy areas, not just open ocean);
+ * z8 already shows a real road in a land-heavy East Bay tile. Capping
+ * the map's own interactive zoom here (not just the initial fit below)
+ * trades away zooming into a specific harbor/marina at close range for
+ * a guarantee that roads/boundaries never appear — a deliberate choice
+ * over switching to a road-free-at-any-zoom basemap (`World_Terrain_Base`),
+ * whose own ocean rendering is flatter/more color-banded than the rich
+ * shaded-relief texture this app wants (also verified live, tile by
+ * tile, before deciding).
+ */
+export const MAX_MAP_ZOOM = 7;
+
+/**
  * The initial camera fits itself to this bbox (`CA_COAST_BBOX` — the same
  * one every API query is scoped to) rather than using a fixed center +
  * zoom number. A fixed zoom is tied to one specific viewport width: 5.4
@@ -92,5 +109,5 @@ export const MAP_STYLE: StyleSpecification = {
  * this bbox, so it's correct on a phone and a desktop window alike.
  */
 export const DEFAULT_MAP_BOUNDS = CA_COAST_BBOX;
-/** Leaves a little room so the bbox's own edges aren't flush against the screen/UI chrome, and keeps fitBounds from zooming in uncomfortably close on a narrow/tall viewport. */
-export const DEFAULT_MAP_FIT_OPTIONS = { padding: 32, maxZoom: 8 };
+/** Leaves a little room so the bbox's own edges aren't flush against the screen/UI chrome, and keeps fitBounds from zooming in uncomfortably close on a narrow/tall viewport. Capped at the same `MAX_MAP_ZOOM`, not a separate number, so the initial view can never itself land past where the hard interactive cap would immediately snap it back from. */
+export const DEFAULT_MAP_FIT_OPTIONS = { padding: 32, maxZoom: MAX_MAP_ZOOM };

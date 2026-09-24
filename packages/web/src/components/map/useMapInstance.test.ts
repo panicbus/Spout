@@ -1,6 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
-import { DEFAULT_MAP_BOUNDS, DEFAULT_MAP_FIT_OPTIONS, MAP_STYLE } from "../../lib/mapConfig.js";
+import { DEFAULT_MAP_BOUNDS, DEFAULT_MAP_FIT_OPTIONS, MAP_STYLE, MAX_MAP_ZOOM } from "../../lib/mapConfig.js";
 import { mapInstances, resetMaplibreMock } from "../../test/maplibre-mock.js";
 import { useMapInstance } from "./useMapInstance.js";
 
@@ -22,6 +22,7 @@ describe("useMapInstance", () => {
     expect(mapInstances[0]?.options).toMatchObject({
       container,
       style: MAP_STYLE,
+      maxZoom: MAX_MAP_ZOOM,
     });
   });
 

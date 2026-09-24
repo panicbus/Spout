@@ -1,6 +1,6 @@
 import { Map as MapLibreMap, NavigationControl, setWorkerUrl } from "maplibre-gl";
 import { useCallback, useEffect, useState } from "react";
-import { DEFAULT_MAP_BOUNDS, DEFAULT_MAP_FIT_OPTIONS, MAP_STYLE } from "../../lib/mapConfig.js";
+import { DEFAULT_MAP_BOUNDS, DEFAULT_MAP_FIT_OPTIONS, MAP_STYLE, MAX_MAP_ZOOM } from "../../lib/mapConfig.js";
 
 /**
  * MapLibre's own default worker-URL resolution silently resolves to a
@@ -48,6 +48,11 @@ export function useMapInstance() {
     const instance = new MapLibreMap({
       container,
       style: MAP_STYLE,
+      // See MAX_MAP_ZOOM's own doc comment: Esri's Ocean Base tiles bake
+      // roads/boundaries into the raster past this zoom, with no vector
+      // layer to hide them — an interactive cap is the only way to keep
+      // them from ever appearing.
+      maxZoom: MAX_MAP_ZOOM,
     });
     // Framing the initial view via fitBounds() as an imperative call
     // rather than the constructor's own `bounds` option — functionally
